@@ -28,41 +28,107 @@ def generate_sql(
     """
     Generate SQL from the user's question.
 
-    This is intentionally rule-based for now.
-    Later, this will be replaced with LLM-based
-    text-to-SQL generation.
+    Phase 1:
+        Deterministic rule-based text-to-SQL.
+
+    Later:
+        This node will be replaced/enhanced with an
+        LLM-based SQL generation and reasoning layer.
     """
 
-    question = state["question"].lower()
+    question = state["question"].lower().strip()
 
     sql_query: str | None = None
 
+    # ---------------------------------------------------------
+    # COUNT FRANCHISEES
+    # ---------------------------------------------------------
+
     if (
-        "average satisfaction" in question
-        and "country" in question
+        "how many franchisees" in question
+        and "by status" not in question
     ):
 
         sql_query = """
         SELECT
-            country,
-            ROUND(
-                CAST(
-                    AVG(satisfaction_score)
-                    AS numeric
-                ),
-                2
-            ) AS average_satisfaction
-        FROM survey_responses
-        GROUP BY country
-        ORDER BY average_satisfaction DESC;
+            COUNT(*) AS total_franchisees
+        FROM franchisees;
         """
 
-    elif "count" in question:
+    # ---------------------------------------------------------
+    # ACTIVE FRANCHISEES
+    # ---------------------------------------------------------
+
+    elif (
+        "active franchisees" in question
+        or (
+            "franchisees" in question
+            and "active" in question
+        )
+    ):
 
         sql_query = """
         SELECT
-            COUNT(*) AS total_responses
-        FROM survey_responses;
+            COUNT(*) AS active_franchisees
+        FROM franchisees
+        WHERE status = 'ACTIVE';
+        """
+
+    # ---------------------------------------------------------
+    # INACTIVE FRANCHISEES
+    # ---------------------------------------------------------
+
+    elif (
+        "inactive franchisees" in question
+        or (
+            "franchisees" in question
+            and "inactive" in question
+        )
+    ):
+
+        sql_query = """
+        SELECT
+            COUNT(*) AS inactive_franchisees
+        FROM franchisees
+        WHERE status = 'INACTIVE';
+        """
+
+    # ---------------------------------------------------------
+    # COUNT CHILDREN
+    # ---------------------------------------------------------
+
+    elif (
+        "how many children" in question
+        or "number of children" in question
+        or "children are enrolled" in question
+    ):
+
+        sql_query = """
+        SELECT
+            COUNT(*) AS total_children
+        FROM children
+        WHERE status = 'ENROLLED';
+        """
+
+    # ---------------------------------------------------------
+    # FRANCHISEES BY STATUS
+    # ---------------------------------------------------------
+
+    elif (
+        "franchisees by status" in question
+        or (
+            "franchisees" in question
+            and "status" in question
+        )
+    ):
+
+        sql_query = """
+        SELECT
+            status,
+            COUNT(*) AS franchisee_count
+        FROM franchisees
+        GROUP BY status
+        ORDER BY status;
         """
 
     return {
@@ -75,6 +141,9 @@ def generate_sql(
 def run_sql(
     state: AgentState,
 ) -> AgentState:
+    """
+    Execute the generated SQL using the read-only SQL tool.
+    """
 
     sql_query = state["sql_query"]
 
@@ -108,6 +177,14 @@ def run_sql(
 def generate_answer(
     state: AgentState,
 ) -> AgentState:
+    """
+    Convert SQL results into a simple human-readable answer.
+
+    This is intentionally simple in Phase 1.
+
+    Later this node will use an LLM to produce richer,
+    context-aware analytical explanations.
+    """
 
     if state["error"]:
 
@@ -137,6 +214,21 @@ def generate_answer(
 
 
 def build_agent():
+    """
+    Build and compile the analytics LangGraph workflow.
+
+    Current workflow:
+
+        START
+          ↓
+      generate_sql
+          ↓
+        run_sql
+          ↓
+    generate_answer
+          ↓
+         END
+    """
 
     graph = StateGraph(AgentState)
 
