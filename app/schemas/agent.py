@@ -1,18 +1,15 @@
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class AgentRequest(BaseModel):
-    question: str = Field(
-        ...,
-        min_length=1,
-        description="Natural-language question from the user.",
-    )
+    question: str
 
 
 class AgentResponse(BaseModel):
     answer: str
+    intent: str | None = None
     sql_query: str | None = None
-    results: list[dict[str, Any]] = []
-    sources: list[str] = []
+    results: list[dict[str, Any]]
+    sources: list[str]

@@ -1,163 +1,334 @@
+"""
+Analytics agent for the ECD intelligence platform.
 
-from typing import Any
-from typing import TypedDict
+Phase 2 responsibilities:
 
-from langgraph.graph import END
-from langgraph.graph import START
-from langgraph.graph import StateGraph
+1. Classify analytics questions.
+2. Generate safe SELECT queries.
+3. Execute queries against PostgreSQL.
+4. Return a stable structured response.
+5. Expose a LangGraph runnable named `analytics_agent`.
+"""
+
+from __future__ import annotations
+
+from typing import Any, TypedDict
+
+from langgraph.graph import END, START, StateGraph
 
 from app.tools.sql_tool import execute_sql
 
+from app.services.intent_classifier import classify_intent
+from app.services.query_planner import build_query_plan
 
-class AgentState(TypedDict):
+
+# -------------------------------------------------------------------
+# STATE
+# -------------------------------------------------------------------
+
+class AnalyticsState(TypedDict, total=False):
+    """
+    State passed through the analytics LangGraph workflow.
+    """
 
     question: str
-
     sql_query: str | None
-
     results: list[dict[str, Any]]
-
     answer: str | None
-
     error: str | None
+    intent: str | None
 
 
-def generate_sql(
-    state: AgentState,
-) -> AgentState:
+# -------------------------------------------------------------------
+# SQL GENERATION
+# -------------------------------------------------------------------
+
+def generate_sql(intent: str) -> str | None:
     """
-    Generate SQL from the user's question.
-
-    Phase 1:
-        Deterministic rule-based text-to-SQL.
-
-    Later:
-        This node will be replaced/enhanced with an
-        LLM-based SQL generation and reasoning layer.
+    Generate a read-only PostgreSQL query for an analytics intent.
     """
 
-    question = state["question"].lower().strip()
+    # ---------------------------------------------------------------
+    # TOTAL FRANCHISEES
+    # ---------------------------------------------------------------
 
-    sql_query: str | None = None
+    if intent == "count_franchisees":
 
-    # ---------------------------------------------------------
-    # COUNT FRANCHISEES
-    # ---------------------------------------------------------
+        return """
+SELECT
+    COUNT(*) AS franchisee_count
+FROM franchisees
+""".strip()
 
-    if (
-        "how many franchisees" in question
-        and "by status" not in question
-    ):
-
-        sql_query = """
-        SELECT
-            COUNT(*) AS total_franchisees
-        FROM franchisees;
-        """
-
-    # ---------------------------------------------------------
+    # ---------------------------------------------------------------
     # ACTIVE FRANCHISEES
-    # ---------------------------------------------------------
+    # ---------------------------------------------------------------
 
-    elif (
-        "active franchisees" in question
-        or (
-            "franchisees" in question
-            and "active" in question
-        )
-    ):
+    if intent == "active_franchisees":
 
-        sql_query = """
-        SELECT
-            COUNT(*) AS active_franchisees
-        FROM franchisees
-        WHERE status = 'ACTIVE';
-        """
+        return """
+SELECT
+    COUNT(*) AS active_franchisee_count
+FROM franchisees
+WHERE status = 'ACTIVE'
+""".strip()
 
-    # ---------------------------------------------------------
-    # INACTIVE FRANCHISEES
-    # ---------------------------------------------------------
+    # ---------------------------------------------------------------
+    # ENROLLED CHILDREN
+    # ---------------------------------------------------------------
 
-    elif (
-        "inactive franchisees" in question
-        or (
-            "franchisees" in question
-            and "inactive" in question
-        )
-    ):
+    if intent == "count_children":
 
-        sql_query = """
-        SELECT
-            COUNT(*) AS inactive_franchisees
-        FROM franchisees
-        WHERE status = 'INACTIVE';
-        """
+        return """
+SELECT
+    COUNT(*) AS child_count
+FROM children
+WHERE status = 'ENROLLED'
+""".strip()
 
-    # ---------------------------------------------------------
-    # COUNT CHILDREN
-    # ---------------------------------------------------------
-
-    elif (
-        "how many children" in question
-        or "number of children" in question
-        or "children are enrolled" in question
-    ):
-
-        sql_query = """
-        SELECT
-            COUNT(*) AS total_children
-        FROM children
-        WHERE status = 'ENROLLED';
-        """
-
-    # ---------------------------------------------------------
+    # ---------------------------------------------------------------
     # FRANCHISEES BY STATUS
-    # ---------------------------------------------------------
+    # ---------------------------------------------------------------
 
-    elif (
-        "franchisees by status" in question
-        or (
-            "franchisees" in question
-            and "status" in question
-        )
-    ):
+    if intent == "franchisees_by_status":
 
-        sql_query = """
-        SELECT
-            status,
-            COUNT(*) AS franchisee_count
-        FROM franchisees
-        GROUP BY status
-        ORDER BY status;
-        """
+        return """
+SELECT
+    status,
+    COUNT(*) AS franchisee_count
+FROM franchisees
+GROUP BY status
+ORDER BY status
+""".strip()
+
+    # ---------------------------------------------------------------
+    # FRANCHISEES BY PROVINCE
+    # ---------------------------------------------------------------
+
+    if intent == "franchisees_by_province":
+
+        return """
+SELECT
+    p.name AS province,
+    COUNT(f.id) AS franchisee_count
+FROM franchisees f
+JOIN small_areas sa
+    ON sa.id = f.small_area_id
+JOIN sub_places sp
+    ON sp.id = sa.sub_place_id
+JOIN main_places mp
+    ON mp.id = sp.main_place_id
+JOIN local_municipalities lm
+    ON lm.id = mp.local_municipality_id
+JOIN municipalities m
+    ON m.id = lm.municipality_id
+JOIN provinces p
+    ON p.id = m.province_id
+GROUP BY
+    p.id,
+    p.name
+ORDER BY
+    p.name
+""".strip()
+
+    # ---------------------------------------------------------------
+    # FRANCHISEES BY MAIN PLACE
+    # ---------------------------------------------------------------
+
+    if intent == "franchisees_by_main_place":
+
+        return """
+SELECT
+    mp.name AS main_place,
+    COUNT(f.id) AS franchisee_count
+FROM franchisees f
+JOIN small_areas sa
+    ON sa.id = f.small_area_id
+JOIN sub_places sp
+    ON sp.id = sa.sub_place_id
+JOIN main_places mp
+    ON mp.id = sp.main_place_id
+GROUP BY
+    mp.id,
+    mp.name
+ORDER BY
+    mp.name
+""".strip()
+
+    # ---------------------------------------------------------------
+    # CHILDREN BY PROVINCE
+    #
+    # IMPORTANT:
+    #
+    # Children are grouped according to residential geography.
+    # This uses:
+    #
+    #     children.residential_small_area_id
+    #
+    # NOT the franchisee operating location.
+    # ---------------------------------------------------------------
+
+    if intent == "children_by_province":
+
+        return """
+SELECT
+    p.name AS province,
+    COUNT(c.id) AS child_count
+FROM children c
+JOIN small_areas sa
+    ON sa.id = c.residential_small_area_id
+JOIN sub_places sp
+    ON sp.id = sa.sub_place_id
+JOIN main_places mp
+    ON mp.id = sp.main_place_id
+JOIN local_municipalities lm
+    ON lm.id = mp.local_municipality_id
+JOIN municipalities m
+    ON m.id = lm.municipality_id
+JOIN provinces p
+    ON p.id = m.province_id
+WHERE c.status = 'ENROLLED'
+GROUP BY
+    p.id,
+    p.name
+ORDER BY
+    p.name
+""".strip()
+
+    # ---------------------------------------------------------------
+    # POPULATION BY PROVINCE
+    #
+    # Alias population_total as `population` because this is the
+    # stable result contract expected by the analytics API/tests.
+    # ---------------------------------------------------------------
+
+    if intent == "population_by_province":
+
+        return """
+SELECT
+    p.name AS province,
+    SUM(ps.population_total) AS population
+FROM population_snapshots ps
+JOIN small_areas sa
+    ON sa.id = ps.small_area_id
+JOIN sub_places sp
+    ON sp.id = sa.sub_place_id
+JOIN main_places mp
+    ON mp.id = sp.main_place_id
+JOIN local_municipalities lm
+    ON lm.id = mp.local_municipality_id
+JOIN municipalities m
+    ON m.id = lm.municipality_id
+JOIN provinces p
+    ON p.id = m.province_id
+GROUP BY
+    p.id,
+    p.name
+ORDER BY
+    p.name
+""".strip()
+
+    return None
+
+
+# -------------------------------------------------------------------
+# LANGGRAPH NODES
+# -------------------------------------------------------------------
+
+def classify_node(
+    state: AnalyticsState,
+) -> AnalyticsState:
+    """
+    Resolve analytics intent.
+
+    Uses a pre-planned intent from the query planner when present,
+    otherwise classifies from the question text.
+    """
+
+    question = state.get("question", "")
+    intent = state.get("intent")
+
+    if intent is None:
+        intent = classify_intent(question)
+
+    if intent is None:
+        return {
+            **state,
+            "intent": None,
+            "sql_query": None,
+            "error": (
+                "No SQL query could be generated "
+                "for this question."
+            ),
+            "results": [],
+        }
 
     return {
         **state,
-        "sql_query": sql_query,
+        "intent": intent,
         "error": None,
     }
 
 
-def run_sql(
-    state: AgentState,
-) -> AgentState:
+def generate_sql_node(
+    state: AnalyticsState,
+) -> AnalyticsState:
     """
-    Execute the generated SQL using the read-only SQL tool.
+    Generate SQL from the classified intent.
     """
 
-    sql_query = state["sql_query"]
+    intent = state.get("intent")
 
-    if sql_query is None:
+    if intent is None:
+
+        return {
+            **state,
+            "sql_query": None,
+            "error": (
+                "No SQL query could be generated "
+                "for this question."
+            ),
+        }
+
+    query = generate_sql(intent)
+
+    if query is None:
+
+        return {
+            **state,
+            "sql_query": None,
+            "error": (
+                "No SQL query could be generated "
+                "for this question."
+            ),
+        }
+
+    return {
+        **state,
+        "sql_query": query,
+        "error": None,
+    }
+
+
+def execute_sql_node(
+    state: AnalyticsState,
+) -> AnalyticsState:
+    """
+    Execute the generated read-only SQL query.
+    """
+
+    query = state.get("sql_query")
+
+    if not query:
 
         return {
             **state,
             "results": [],
-            "error": "No SQL query could be generated.",
         }
 
     try:
 
-        results = execute_sql(sql_query)
+        results = execute_sql(query)
 
         return {
             **state,
@@ -174,100 +345,210 @@ def run_sql(
         }
 
 
-def generate_answer(
-    state: AgentState,
-) -> AgentState:
+# -------------------------------------------------------------------
+# ROUTING
+# -------------------------------------------------------------------
+
+def route_after_classification(
+    state: AnalyticsState,
+) -> str:
     """
-    Convert SQL results into a simple human-readable answer.
-
-    This is intentionally simple in Phase 1.
-
-    Later this node will use an LLM to produce richer,
-    context-aware analytical explanations.
+    Decide whether the workflow should generate SQL or terminate.
     """
 
-    if state["error"]:
+    if state.get("intent") is None:
+        return "end"
 
-        answer = (
-            "I could not answer the question. "
-            f"Reason: {state['error']}"
-        )
-
-    elif not state["results"]:
-
-        answer = (
-            "The query executed successfully, "
-            "but no results were returned."
-        )
-
-    else:
-
-        answer = (
-            "Analysis completed successfully. "
-            f"Results: {state['results']}"
-        )
-
-    return {
-        **state,
-        "answer": answer,
-    }
+    return "generate_sql"
 
 
-def build_agent():
+def route_after_sql_generation(
+    state: AnalyticsState,
+) -> str:
+    """
+    Decide whether the generated SQL should be executed.
+    """
+
+    if state.get("sql_query") is None:
+        return "end"
+
+    return "execute_sql"
+
+
+# -------------------------------------------------------------------
+# LANGGRAPH WORKFLOW
+# -------------------------------------------------------------------
+
+def build_analytics_graph():
     """
     Build and compile the analytics LangGraph workflow.
-
-    Current workflow:
-
-        START
-          ↓
-      generate_sql
-          ↓
-        run_sql
-          ↓
-    generate_answer
-          ↓
-         END
     """
 
-    graph = StateGraph(AgentState)
+    graph = StateGraph(AnalyticsState)
+
+    # Nodes
+    graph.add_node(
+        "classify",
+        classify_node,
+    )
 
     graph.add_node(
         "generate_sql",
-        generate_sql,
+        generate_sql_node,
     )
 
     graph.add_node(
-        "run_sql",
-        run_sql,
+        "execute_sql",
+        execute_sql_node,
     )
 
-    graph.add_node(
-        "generate_answer",
-        generate_answer,
-    )
-
+    # Entry point
     graph.add_edge(
         START,
+        "classify",
+    )
+
+    # Classification routing
+    graph.add_conditional_edges(
+        "classify",
+        route_after_classification,
+        {
+            "generate_sql": "generate_sql",
+            "end": END,
+        },
+    )
+
+    # SQL generation routing
+    graph.add_conditional_edges(
         "generate_sql",
+        route_after_sql_generation,
+        {
+            "execute_sql": "execute_sql",
+            "end": END,
+        },
     )
 
+    # Execution terminates the workflow
     graph.add_edge(
-        "generate_sql",
-        "run_sql",
-    )
-
-    graph.add_edge(
-        "run_sql",
-        "generate_answer",
-    )
-
-    graph.add_edge(
-        "generate_answer",
+        "execute_sql",
         END,
     )
 
     return graph.compile()
 
 
-analytics_agent = build_agent()
+# -------------------------------------------------------------------
+# PUBLIC ANALYTICS AGENT
+# -------------------------------------------------------------------
+
+analytics_agent = build_analytics_graph()
+
+
+# -------------------------------------------------------------------
+# CONVENIENCE HELPERS
+# -------------------------------------------------------------------
+
+def _error(
+    message: str,
+    intent: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "intent": intent,
+        "query": None,
+        "results": [],
+        "error": message,
+    }
+
+
+def _success(
+    intent: str,
+    query: str,
+    results: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "intent": intent,
+        "query": query,
+        "results": results,
+        "error": None,
+    }
+
+
+# -------------------------------------------------------------------
+# CONVENIENCE FUNCTION
+# -------------------------------------------------------------------
+
+def run_agent(question: str) -> dict[str, Any]:
+    """
+    Execute the analytics pipeline.
+
+    Flow:
+
+        Natural language question
+                    ↓
+              Query Planner
+                    ↓
+                Intent
+                    ↓
+              SQL Generator
+                    ↓
+                SQL Tool
+                    ↓
+             Structured result
+    """
+
+    if not isinstance(question, str):
+        return _error(
+            "Question must be a string."
+        )
+    
+
+
+    plan = build_query_plan(question)
+
+    if plan is None:
+        return _error(
+            "No SQL query could be generated for this question."
+        )
+    
+
+
+    intent = plan.intent
+
+    query = generate_sql(intent)
+
+    if query is None:
+        return _error(
+            "No SQL query could be generated for this question.",
+            intent=intent,
+        )
+
+    try:
+        results = execute_sql(query)
+
+    except Exception as exc:
+        return _error(
+            str(exc),
+            intent=intent,
+        )
+
+    return _success(
+        intent=intent,
+        query=query,
+        results=results,
+    )
+
+
+# -------------------------------------------------------------------
+# EXPORTS
+# -------------------------------------------------------------------
+
+__all__ = [
+    "AnalyticsState",
+    "analytics_agent",
+    "build_analytics_graph",
+    "classify_intent",
+    "generate_sql",
+    "run_agent",
+]
+
+

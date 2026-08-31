@@ -8,8 +8,11 @@ from app.schemas.agent import AgentResponse
 
 app = FastAPI(
     title="Enterprise Agent Platform",
-    description="Multi-agent AI platform for enterprise data analysis.",
-    version="0.1.0",
+    description=(
+        "Multi-agent AI platform for enterprise "
+        "data analysis."
+    ),
+    version="0.2.0",
 )
 
 
@@ -32,11 +35,13 @@ def run_agent(
     request: AgentRequest,
 ) -> AgentResponse:
     """
-    Run the Analytics Agent against a natural-language question.
+    Run the Analytics Agent against a
+    natural-language question.
     """
 
     initial_state = {
         "question": request.question,
+        "intent": None,
         "sql_query": None,
         "results": [],
         "answer": None,
@@ -53,14 +58,17 @@ def run_agent(
 
         raise HTTPException(
             status_code=500,
-            detail=f"Agent execution failed: {exc}",
+            detail=(
+                f"Agent execution failed: {exc}"
+            ),
         )
 
     return AgentResponse(
         answer=result["answer"] or "",
+        intent=result["intent"],
         sql_query=result["sql_query"],
         results=result["results"],
         sources=[
-            "PostgreSQL survey database"
+            "PostgreSQL ECD intelligence database"
         ],
     )
