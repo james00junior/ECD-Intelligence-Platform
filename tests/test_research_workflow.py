@@ -47,7 +47,7 @@ def test_research_workflow_terminates_for_direct_question():
     assert result["evidence"] == []
     assert result["research_steps"] == 0
     assert result["answer"] is None
-    assert result["error"] is None
+    assert result["error"] == "Insufficient evidence to answer the question."
 
 
 def test_research_workflow_preserves_organisation_scope(monkeypatch):
@@ -90,3 +90,32 @@ def test_research_workflow_collects_sql_and_document_evidence(monkeypatch):
     assert result["source_requirements"] == ["sql", "internal_document"]
     assert result["evidence"] == [sql_evidence, document_evidence]
     assert result["research_steps"] == 2
+
+
+def test_research_workflow_collects_external_evidence(monkeypatch):
+    external_evidence = {
+        "evidence_id": "external:1",
+        "content": "Public ECD research supports coaching.",
+        "provenance": {
+            "source_type": "external",
+            "source_id": "https://example.com/research",
+            "title": "ECD research",
+            "uri": "https://example.com/research",
+            "organisation_id": None,
+            "metadata": {},
+        },
+        "score": None,
+        "metadata": {},
+    }
+    monkeypatch.setattr(
+        "app.workflows.research_workflow.search_external_research",
+        lambda question: {"evidence": [external_evidence], "error": None},
+    )
+
+    result = research_workflow.invoke(
+        {"question": "Find public research on ECD quality.", "organisation_id": 1}
+    )
+
+    assert result["route"] == "external"
+    assert result["selected_evidence"] == [external_evidence]
+    assert result["citations"][0]["source_kind"] == "external"

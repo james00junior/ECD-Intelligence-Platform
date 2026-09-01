@@ -12,6 +12,9 @@ ResearchRoute = Literal[
     "internal_knowledge",
     "sql_and_internal_knowledge",
     "external",
+    "sql_and_external",
+    "internal_knowledge_and_external",
+    "all_sources",
     "direct",
 ]
 
@@ -52,8 +55,14 @@ def route_research_question(question: str) -> ResearchRoute:
         normalized_question, EXTERNAL_RESEARCH_KEYWORDS
     )
 
+    if needs_sql and needs_internal_knowledge and needs_external_research:
+        return "all_sources"
     if needs_sql and needs_internal_knowledge:
         return "sql_and_internal_knowledge"
+    if needs_sql and needs_external_research:
+        return "sql_and_external"
+    if needs_internal_knowledge and needs_external_research:
+        return "internal_knowledge_and_external"
     if needs_sql:
         return "sql"
     if needs_internal_knowledge:
@@ -71,6 +80,9 @@ def source_requirements_for_route(route: ResearchRoute) -> list[str]:
         "internal_knowledge": ["internal_document"],
         "sql_and_internal_knowledge": ["sql", "internal_document"],
         "external": ["external"],
+        "sql_and_external": ["sql", "external"],
+        "internal_knowledge_and_external": ["internal_document", "external"],
+        "all_sources": ["sql", "internal_document", "external"],
         "direct": [],
     }
     return requirements[route]

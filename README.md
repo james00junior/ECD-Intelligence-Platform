@@ -66,7 +66,7 @@ Legend:
 | Automated service/API/tool tests | ✅ Shipped |
 | GitHub version control | ✅ Shipped |
 
-**Current verified baseline: 125 automated tests passing.**
+**Current verified baseline: 135 automated tests passing.**
 
 The foundation is the baseline that all subsequent phases must preserve. New capabilities must be added incrementally and must not introduce hard-coded embedding dimensions or other provider-specific assumptions into the application architecture.
 
@@ -207,10 +207,10 @@ The Research Agent is not simply a vector-search wrapper. It is a controlled rea
 
 ### RAG/research sources
 
-- [ ] Structured organisational data through SQL
-- [ ] Organisation-owned documents through vector retrieval
-- [ ] External knowledge sources
-- [ ] Live web research
+- [x] Structured organisational data through SQL
+- [x] Organisation-owned documents through vector retrieval
+- [x] External knowledge sources
+- [x] Live web research
 - [ ] External APIs where appropriate
 - [ ] Customer-provided knowledge sources
 
@@ -257,35 +257,35 @@ The Research Agent is not simply a vector-search wrapper. It is a controlled rea
 
 ### RAG-5 — External research tool
 
-- [ ] Define external research interface
-- [ ] Add web-search abstraction
-- [ ] Retrieve external evidence
-- [ ] Capture source URL/title metadata
-- [ ] Handle timeouts and failures
-- [ ] Prevent external results from bypassing organisation security
-- [ ] Add external research tests with mocked providers
+- [x] Define external research interface
+- [x] Add web-search abstraction
+- [x] Retrieve external evidence
+- [x] Capture source URL/title metadata
+- [x] Handle timeouts and failures
+- [x] Prevent external results from bypassing organisation security
+- [x] Add external research tests with mocked providers
 
 ### RAG-6 — Evidence aggregation
 
-- [ ] Combine SQL evidence
-- [ ] Combine internal document evidence
-- [ ] Combine external research evidence
-- [ ] Preserve source identity
-- [ ] Preserve organisation identity
-- [ ] Detect conflicting evidence
-- [ ] Rank/select useful evidence
-- [ ] Remove duplicate evidence
-- [ ] Add evidence aggregation tests
+- [x] Combine SQL evidence
+- [x] Combine internal document evidence
+- [x] Combine external research evidence
+- [x] Preserve source identity
+- [x] Preserve organisation identity
+- [x] Detect conflicting evidence
+- [x] Rank/select useful evidence
+- [x] Remove duplicate evidence
+- [x] Add evidence aggregation tests
 
 ### RAG-7 — Grounded answer synthesis
 
-- [ ] Build synthesis prompt
-- [ ] Pass only selected evidence to the answer model
-- [ ] Require evidence-grounded claims
-- [ ] Generate citations/source references
-- [ ] Distinguish organisational facts from external facts
-- [ ] Handle insufficient evidence
-- [ ] Add hallucination/grounding tests
+- [x] Build synthesis prompt
+- [x] Pass only selected evidence to the answer model
+- [x] Require evidence-grounded claims
+- [x] Generate citations/source references
+- [x] Distinguish organisational facts from external facts
+- [x] Handle insufficient evidence
+- [x] Add hallucination/grounding tests
 
 ### RAG-8 — Research loop
 
@@ -670,7 +670,7 @@ with an explicit organisation-not-found error.
 - ✅ pgvector storage
 - ✅ Organisation-scoped semantic retrieval
 - ✅ Vector and embedding service test coverage
-- ✅ Full regression suite: **125 passed**
+- ✅ Full regression suite: **135 passed**
 
 ## Current
 
@@ -679,17 +679,17 @@ with an explicit organisation-not-found error.
 - ✅ RAG-2: Question routing
 - ✅ RAG-3: Internal knowledge retrieval tool
 - ✅ RAG-4: SQL research tool
-- ⬜ RAG-5: External research tool
-- ⬜ RAG-6: Evidence aggregation
-- ⬜ RAG-7: Grounded answer synthesis
+- ✅ RAG-5: External research tool
+- ✅ RAG-6: Evidence aggregation
+- ✅ RAG-7: Grounded answer synthesis
 - ⬜ RAG-8: Controlled research loop
 - ⬜ RAG-9: Research Agent API
 
 ## Next checkpoint
 
-The next implementation checkpoint is **RAG-5 — External research tool**.
+The next implementation checkpoint is **RAG-8 — Controlled research loop**.
 
-RAG-2 through RAG-4 add deterministic source routing, organisation-filtered internal knowledge retrieval, and safe SQL evidence collection. RAG-5 will add a controlled external-research interface with mocked-provider tests.
+RAG-5 through RAG-7 add controlled external research, tenant-safe evidence aggregation, and deterministic citation-backed synthesis. RAG-8 will add bounded follow-up retrieval and evidence-sufficiency evaluation.
 
 ### RAG-1 acceptance criteria
 

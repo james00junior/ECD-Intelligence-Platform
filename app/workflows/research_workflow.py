@@ -13,12 +13,15 @@ from typing import Any, Literal, TypedDict
 from langgraph.graph import END, StateGraph
 
 from app.database.database import SessionLocal
+from app.services.evidence_aggregation import aggregate_evidence
+from app.services.grounded_synthesis import synthesize_grounded_answer
 from app.services.research_router import (
     ResearchRoute,
     route_research_question,
     source_requirements_for_route,
 )
 from app.tools.internal_knowledge_tool import search_internal_knowledge
+from app.tools.external_research_tool import search_external_research
 from app.tools.sql_research_tool import run_sql_research
 
 EvidenceSourceType = Literal[
@@ -63,6 +66,10 @@ class ResearchState(TypedDict, total=False):
     route: ResearchRoute
     source_requirements: list[str]
     evidence: list[ResearchEvidence]
+    selected_evidence: list[ResearchEvidence]
+    rejected_evidence: list[ResearchEvidence]
+    conflicts: list[dict[str, Any]]
+    citations: list[dict[str, Any]]
     answer: str | None
     error: str | None
     research_steps: int
@@ -88,19 +95,31 @@ def route_after_initial_routing(state: ResearchState) -> str:
     """Map an evidence route to the first safe research node."""
 
     route = state.get("route")
-    if route in {"sql", "sql_and_internal_knowledge"}:
+    requirements = state.get("source_requirements", [])
+    if "sql" in requirements:
         return "sql_research"
-    if route == "internal_knowledge":
+    if "internal_document" in requirements:
         return "internal_knowledge"
-    return "terminal_answer"
+    if "external" in requirements:
+        return "external_research"
+    return "aggregate_evidence"
 
 
 def route_after_sql_research(state: ResearchState) -> str:
     """Continue mixed questions into internal retrieval."""
 
-    if state.get("route") == "sql_and_internal_knowledge":
+    requirements = state.get("source_requirements", [])
+    if "internal_document" in requirements:
         return "internal_knowledge"
-    return "terminal_answer"
+    if "external" in requirements:
+        return "external_research"
+    return "aggregate_evidence"
+
+
+def route_after_internal_knowledge(state: ResearchState) -> str:
+    if "external" in state.get("source_requirements", []):
+        return "external_research"
+    return "aggregate_evidence"
 
 
 def sql_research_node(state: ResearchState) -> dict[str, Any]:
@@ -149,14 +168,51 @@ def internal_knowledge_node(state: ResearchState) -> dict[str, Any]:
     }
 
 
+def external_research_node(state: ResearchState) -> dict[str, Any]:
+    """Collect public evidence without passing organisation data to the web."""
+
+    result = search_external_research(state.get("question", ""))
+    return {
+        "evidence": state.get("evidence", []) + result["evidence"],
+        "error": state.get("error") or result["error"],
+        "research_steps": state.get("research_steps", 0) + 1,
+    }
+
+
+def aggregate_evidence_node(state: ResearchState) -> dict[str, Any]:
+    """Select tenant-safe evidence and preserve any detected conflicts."""
+
+    result = aggregate_evidence(
+        evidence_items=state.get("evidence", []),
+        organisation_id=state.get("organisation_id"),
+    )
+    return result
+
+
+def synthesis_node(state: ResearchState) -> dict[str, Any]:
+    """Create a grounded answer from selected evidence only."""
+
+    result = synthesize_grounded_answer(
+        question=state.get("question", ""),
+        evidence=state.get("selected_evidence", []),
+    )
+    return {
+        "answer": result["answer"],
+        "citations": result["citations"],
+        "error": state.get("error") or result["error"],
+    }
+
+
 def terminal_answer_node(
     state: ResearchState,
 ) -> dict[str, Any]:
-    """Provide the stable terminal state for the foundational graph."""
+    """Return the answer, selected evidence, and citations to the caller."""
 
     return {
         "answer": state.get("answer"),
         "evidence": state.get("evidence", []),
+        "selected_evidence": state.get("selected_evidence", []),
+        "citations": state.get("citations", []),
         "error": state.get("error"),
     }
 
@@ -164,9 +220,8 @@ def terminal_answer_node(
 def build_research_workflow():
     """Build a cleanly terminating Research Agent workflow.
 
-    SQL and internal document evidence are collected through existing safety
-    boundaries. The terminal node remains the extension point for RAG-6/7
-    evidence aggregation and answer synthesis.
+    SQL, internal-document, and external research nodes feed a tenant-safe
+    aggregation step before deterministic grounded synthesis.
     """
 
     workflow = StateGraph(ResearchState)
@@ -174,6 +229,9 @@ def build_research_workflow():
     workflow.add_node("initial_routing", initial_routing_node)
     workflow.add_node("sql_research", sql_research_node)
     workflow.add_node("internal_knowledge", internal_knowledge_node)
+    workflow.add_node("external_research", external_research_node)
+    workflow.add_node("aggregate_evidence", aggregate_evidence_node)
+    workflow.add_node("synthesis", synthesis_node)
     workflow.add_node("terminal_answer", terminal_answer_node)
 
     workflow.set_entry_point("initial_routing")
@@ -183,7 +241,8 @@ def build_research_workflow():
         {
             "sql_research": "sql_research",
             "internal_knowledge": "internal_knowledge",
-            "terminal_answer": "terminal_answer",
+            "external_research": "external_research",
+            "aggregate_evidence": "aggregate_evidence",
         },
     )
     workflow.add_conditional_edges(
@@ -191,10 +250,21 @@ def build_research_workflow():
         route_after_sql_research,
         {
             "internal_knowledge": "internal_knowledge",
-            "terminal_answer": "terminal_answer",
+            "external_research": "external_research",
+            "aggregate_evidence": "aggregate_evidence",
         },
     )
-    workflow.add_edge("internal_knowledge", "terminal_answer")
+    workflow.add_conditional_edges(
+        "internal_knowledge",
+        route_after_internal_knowledge,
+        {
+            "external_research": "external_research",
+            "aggregate_evidence": "aggregate_evidence",
+        },
+    )
+    workflow.add_edge("external_research", "aggregate_evidence")
+    workflow.add_edge("aggregate_evidence", "synthesis")
+    workflow.add_edge("synthesis", "terminal_answer")
     workflow.add_edge("terminal_answer", END)
 
     return workflow.compile()
@@ -209,11 +279,15 @@ __all__ = [
     "ResearchState",
     "SourceProvenance",
     "build_research_workflow",
+    "aggregate_evidence_node",
+    "external_research_node",
     "internal_knowledge_node",
     "initial_routing_node",
     "research_workflow",
     "route_after_initial_routing",
     "route_after_sql_research",
+    "route_after_internal_knowledge",
+    "synthesis_node",
     "sql_research_node",
     "terminal_answer_node",
 ]
