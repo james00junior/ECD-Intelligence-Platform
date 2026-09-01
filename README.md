@@ -14,10 +14,12 @@ The core architecture will combine:
 - Safe SQL analytics
 - LangGraph agent orchestration
 - LLM-based reasoning and text-to-SQL
-- External RAG over organisational documents
+- Organisation-scoped document retrieval
+- Research Agent orchestration across SQL, internal knowledge, and external knowledge
 - Web and external knowledge retrieval
 - MCP/tool integrations
 - Multi-organisation / tenant isolation
+- Evidence, citations, and provenance
 - Evaluation and regression testing
 - Security, governance and auditability
 - Observability and production deployment
@@ -32,7 +34,7 @@ Legend:
 - 🚧 **In progress** — currently being developed
 - ⬜ **Planned** — not implemented yet
 
-## Phase 1 — Enterprise foundation
+## Foundation — shipped capabilities
 
 | Component | Status |
 |---|---|
@@ -43,161 +45,309 @@ Legend:
 | Seed data | ✅ Shipped |
 | Read-only SQL execution tool | ✅ Shipped |
 | SQL safety validation | ✅ Shipped |
-| Deterministic analytics routing | ✅ Shipped |
+| Organisation-aware request context | ✅ Shipped |
+| Organisation-scoped analytics | ✅ Shipped |
 | LangGraph analytics workflow | ✅ Shipped |
 | FastAPI application | ✅ Shipped |
 | `/health` endpoint | ✅ Shipped |
-| `/agent` endpoint | ✅ Shipped |
+| `/api/v1` API structure | ✅ Shipped |
+| `/api/v1/agent/query` endpoint | ✅ Shipped |
 | API response schemas | ✅ Shipped |
-| Automated API/tool tests | ✅ Shipped |
+| Document model | ✅ Shipped |
+| Document chunk model | ✅ Shipped |
+| Deterministic document chunking | ✅ Shipped |
+| Embedding service | ✅ Shipped |
+| Dynamic embedding-dimension discovery | ✅ Shipped |
+| Embedding provider abstraction | ✅ Shipped |
+| pgvector storage | ✅ Shipped |
+| Organisation-scoped vector retrieval | ✅ Shipped |
+| Vector similarity search | ✅ Shipped |
+| Embedding deletion | ✅ Shipped |
+| Automated service/API/tool tests | ✅ Shipped |
 | GitHub version control | ✅ Shipped |
 
-**Phase 1 baseline: complete.**
+**Current verified baseline: 107 automated tests passing.**
 
-The Phase 1 baseline is the foundation that all subsequent phases must preserve. Existing tests must continue passing as new capabilities are added.
+The foundation is the baseline that all subsequent phases must preserve. New capabilities must be added incrementally and must not introduce hard-coded embedding dimensions or other provider-specific assumptions into the application architecture.
 
 ---
 
 # Roadmap
 
+## Phase 1 — Enterprise foundation
+
+**Status: ✅ Shipped**
+
+Goal: establish the database, organisation model, safe SQL execution, application structure, and initial LangGraph analytics workflow.
+
+### Completed work
+
+- [x] Python/uv project environment
+- [x] PostgreSQL
+- [x] SQLAlchemy
+- [x] Core organisation/ECD schema
+- [x] Seed data
+- [x] Read-only SQL execution
+- [x] SQL safety validation
+- [x] Initial LangGraph workflow
+- [x] FastAPI application
+- [x] Health endpoint
+- [x] Initial agent endpoint
+- [x] Automated tests
+
+---
+
 ## Phase 2 — Production API and multi-organisation architecture
 
 **Status: ✅ Shipped**
 
-Goal: turn the initial single-dataset analytics API into a properly scoped enterprise platform.
+Goal: turn the initial analytics system into a properly scoped enterprise platform.
 
 ### Completed work
 
-- [x] Finalise organisation model and relationships
-- [x] Add organisation-aware request context
-- [x] Enforce organisation scoping at the query layer
-- [x] Prevent cross-organisation data leakage through explicit organisation validation and scoped queries
-- [x] Add organisation management/read API
-- [x] Add API versioning strategy under `/api/v1`
-- [x] Formalise request/response contracts
-- [x] Add tenant-isolation tests
-- [x] Add organisation service tests
-- [x] Remove orphaned legacy API module
+- [x] Organisation model and relationships
+- [x] Organisation-aware request context
+- [x] Organisation scoping at the query layer
+- [x] Cross-organisation data-leakage protections
+- [x] Organisation management/read API
+- [x] `/api/v1` API versioning
+- [x] Formal request/response contracts
+- [x] Tenant-isolation tests
+- [x] Organisation service tests
+- [x] Removal of obsolete legacy API code
 
 ### Exit criteria
 
 - Every analytics request can be scoped to an organisation.
 - A nonexistent organisation is rejected before analytics execution.
-- Existing Phase 1 tests remain green.
-- Tenant-isolation and organisation-service tests are green.
+- Existing foundation tests remain green.
 - API contracts are versioned and stable.
-
-**Verification checkpoint: 72 automated tests passing.**
 
 ---
 
-## Phase 3 — LLM-powered analytics agent
+## Phase 3 — Document and vector retrieval foundation
 
-**Status: ⬜ Planned / deliberately deferred**
+**Status: ✅ Shipped**
 
-Replace the initial deterministic/rule-based question handling with controlled LLM reasoning while retaining the existing safety boundaries.
+Goal: establish the organisation-scoped unstructured knowledge layer that the Research Agent will use.
 
-This phase is being deferred temporarily so that the platform can establish the unstructured-data retrieval foundation before expanding LLM-driven routing and text-to-SQL.
+### Completed work
+
+- [x] Document data model
+- [x] Document chunk data model
+- [x] Organisation/document ownership relationships
+- [x] Deterministic chunking foundation
+- [x] Embedding service
+- [x] Embedding model abstraction
+- [x] Runtime embedding-dimension discovery
+- [x] No hard-coded application embedding dimension
+- [x] pgvector integration
+- [x] Store chunk embeddings
+- [x] Delete chunk embeddings
+- [x] Organisation-filtered semantic search
+- [x] Document provenance fields
+- [x] Vector service tests
+- [x] Embedding service tests
+
+### Architectural rule
+
+The application does **not** assume that embeddings are 384, 768, or any other fixed dimension. The active embedding provider/model determines the vector dimension at runtime. The retrieval layer accepts the discovered embedding and PostgreSQL/pgvector enforces compatibility with the configured vector storage.
+
+### Verification checkpoint
+
+```text
+107 passed
+```
+
+---
+
+## Phase 4 — Research Agent
+
+**Status: 🚧 Current major phase**
+
+Goal: build a real research-oriented LangGraph agent that can decide what evidence it needs, retrieve that evidence from the appropriate sources, and produce a grounded answer with provenance.
+
+This replaces the previous roadmap concept of **External RAG**. External knowledge is now a capability of the Research Agent rather than a separate isolated phase.
+
+The Research Agent is not simply a vector-search wrapper. It is a controlled reasoning workflow that can combine multiple evidence sources.
+
+### Target architecture
+
+```text
+                              User Question
+                                   |
+                                   v
+                         +-----------------------+
+                         |    Research Agent     |
+                         |       LangGraph       |
+                         +-----------+-----------+
+                                     |
+                                     v
+                              Question Router
+                                     |
+                +--------------------+--------------------+
+                |                    |                    |
+                v                    v                    v
+          SQL Research       Internal Knowledge      External Research
+                |                    |                    |
+                v                    v                    v
+          PostgreSQL            pgvector/KB           Web/APIs
+                |                    |                    |
+                +--------------------+--------------------+
+                                     |
+                                     v
+                            Evidence Aggregation
+                                     |
+                                     v
+                           Evidence-aware Synthesis
+                                     |
+                                     v
+                         Grounded Answer + Sources
+```
+
+### RAG/research sources
+
+- [ ] Structured organisational data through SQL
+- [ ] Organisation-owned documents through vector retrieval
+- [ ] External knowledge sources
+- [ ] Live web research
+- [ ] External APIs where appropriate
+- [ ] Customer-provided knowledge sources
+
+### RAG-1 — Research Agent state and graph
+
+- [ ] Define `ResearchState`
+- [ ] Define research evidence schema
+- [ ] Define source/provenance schema
+- [ ] Define graph nodes and transitions
+- [ ] Define terminal answer state
+- [ ] Add deterministic graph tests
+- [ ] Preserve existing analytics workflow
+
+### RAG-2 — Research question routing
+
+- [ ] Classify question requirements
+- [ ] Detect SQL-required questions
+- [ ] Detect internal-knowledge questions
+- [ ] Detect external-research questions
+- [ ] Detect multi-source questions
+- [ ] Support direct-answer path where retrieval is unnecessary
+- [ ] Add routing tests
+
+### RAG-3 — Internal knowledge retrieval tool
+
+- [ ] Wrap vector search as an agent tool
+- [ ] Generate query embeddings through the embedding service
+- [ ] Preserve runtime embedding dimensions
+- [ ] Enforce organisation filtering
+- [ ] Return document/chunk metadata
+- [ ] Return similarity scores
+- [ ] Return provenance
+- [ ] Add retrieval tool tests
+
+### RAG-4 — SQL research tool
+
+- [ ] Expose safe SQL analytics to the Research Agent
+- [ ] Preserve organisation validation
+- [ ] Preserve read-only SQL enforcement
+- [ ] Return structured evidence
+- [ ] Include query/source metadata
+- [ ] Prevent unrestricted database access
+- [ ] Add agent-to-SQL tests
+
+### RAG-5 — External research tool
+
+- [ ] Define external research interface
+- [ ] Add web-search abstraction
+- [ ] Retrieve external evidence
+- [ ] Capture source URL/title metadata
+- [ ] Handle timeouts and failures
+- [ ] Prevent external results from bypassing organisation security
+- [ ] Add external research tests with mocked providers
+
+### RAG-6 — Evidence aggregation
+
+- [ ] Combine SQL evidence
+- [ ] Combine internal document evidence
+- [ ] Combine external research evidence
+- [ ] Preserve source identity
+- [ ] Preserve organisation identity
+- [ ] Detect conflicting evidence
+- [ ] Rank/select useful evidence
+- [ ] Remove duplicate evidence
+- [ ] Add evidence aggregation tests
+
+### RAG-7 — Grounded answer synthesis
+
+- [ ] Build synthesis prompt
+- [ ] Pass only selected evidence to the answer model
+- [ ] Require evidence-grounded claims
+- [ ] Generate citations/source references
+- [ ] Distinguish organisational facts from external facts
+- [ ] Handle insufficient evidence
+- [ ] Add hallucination/grounding tests
+
+### RAG-8 — Research loop
+
+The agent should be able to recognise when the first retrieval attempt is insufficient and perform another controlled research step.
+
+- [ ] Evidence sufficiency evaluation
+- [ ] Follow-up retrieval
+- [ ] Query refinement
+- [ ] Maximum research-step limit
+- [ ] Failure/recovery path
+- [ ] Termination condition
+- [ ] Research trajectory tests
+
+### RAG-9 — Research Agent API
+
+- [ ] Add `/api/v1/research` endpoint
+- [ ] Define request schema
+- [ ] Define response schema
+- [ ] Return answer and evidence metadata
+- [ ] Return citations
+- [ ] Preserve organisation scope
+- [ ] Add API integration tests
+
+### Research Agent exit criteria
+
+The phase is complete when the system can receive a question such as:
+
+```text
+How many franchisees are operating in Gauteng, and what does our latest
+ECD programme documentation say about the factors affecting programme quality?
+```
+
+and deliberately determine that it requires **both structured SQL evidence and internal document retrieval**, execute both safely, combine the evidence, and return a grounded answer with provenance.
+
+A second class of question should be able to trigger external research when required, while keeping organisational data and external evidence clearly separated.
+
+---
+
+## Phase 5 — LLM-powered analytics and reasoning
+
+**Status: ⬜ Planned**
+
+Replace the remaining deterministic analytics planning with controlled LLM reasoning while retaining all existing safety boundaries.
 
 ### Work items
 
 - [ ] LLM provider abstraction
 - [ ] Schema-aware text-to-SQL generation
-- [ ] Intent classification/router
+- [ ] Intent classification
 - [ ] SQL generation prompt architecture
 - [ ] SQL validation before execution
 - [ ] SQL query repair loop
 - [ ] Result interpretation
 - [ ] Natural-language answer generation
-- [ ] Structured citations/source metadata
 - [ ] Model fallback strategy
 - [ ] LLM evaluation dataset
-- [ ] Regression tests for generated SQL
+- [ ] Generated-SQL regression tests
 - [ ] Cost and latency tracking
 
 ### Important principle
 
-The LLM must **not** receive unrestricted database execution privileges. Generated SQL must pass the safety layer and database permissions before execution.
-
----
-
-## Phase 4 — External RAG
-
-**Status: 🚧 Current major phase**
-
-Add retrieval over unstructured organisational knowledge while preserving organisation-level isolation and provenance.
-
-### Work items
-
-- [ ] Define RAG architecture and interfaces
-- [ ] Document ingestion pipeline
-- [ ] PDF/document parsing
-- [ ] Chunking strategy
-- [ ] Embedding generation
-- [ ] Vector database/store
-- [ ] Metadata filtering
-- [ ] Organisation-specific knowledge collections
-- [ ] Semantic retrieval
-- [ ] Hybrid retrieval
-- [ ] Reranking
-- [ ] Retrieval citations
-- [ ] Document provenance
-- [ ] RAG evaluation set
-- [ ] RAG API endpoint
-- [ ] RAG tests
-
-### Target behaviour
-
-The platform should be able to determine whether a question requires:
-
-1. structured SQL data,
-2. unstructured organisational knowledge,
-3. both SQL and RAG, or
-4. another external source.
-
-### RAG implementation sequence
-
-1. Establish document and knowledge-source data models.
-2. Build organisation-scoped document ingestion.
-3. Parse and chunk documents with stable provenance metadata.
-4. Generate embeddings behind a provider abstraction.
-5. Store vectors with organisation/document metadata.
-6. Implement organisation-filtered retrieval.
-7. Add reranking only after baseline retrieval is measured.
-8. Return citations and provenance with retrieved context.
-9. Add retrieval evaluation and regression tests.
-10. Integrate RAG into the existing `/api/v1` architecture without breaking analytics.
-11. Commit and push each verified increment.
-
-**Important:** RAG is not being added as a decorative second agent. It must solve a real unstructured-knowledge retrieval requirement and remain tenant-safe, testable, and traceable.
-
----
-
-## Phase 5 — Multi-source intelligence
-
-**Status: ⬜ Planned**
-
-Connect multiple information sources behind a controlled routing layer.
-
-### Sources
-
-- [ ] PostgreSQL
-- [ ] Organisational documents
-- [ ] External knowledge bases
-- [ ] Live web search
-- [ ] External APIs
-- [ ] Structured files
-- [ ] Customer-provided data sources
-
-### Work items
-
-- [ ] Source/tool registry
-- [ ] Source routing
-- [ ] Source prioritisation
-- [ ] Cross-source reasoning
-- [ ] Provenance tracking
-- [ ] Conflict handling between sources
-- [ ] Unified answer synthesis
+The LLM must **not** receive unrestricted database execution privileges. Generated SQL must pass the existing safety layer and database permissions before execution.
 
 ---
 
@@ -205,7 +355,7 @@ Connect multiple information sources behind a controlled routing layer.
 
 **Status: ⬜ Planned**
 
-Introduce a standardised tool interface for external systems.
+Introduce standardised tool interfaces for external systems.
 
 ### Work items
 
@@ -219,24 +369,25 @@ Introduce a standardised tool interface for external systems.
 - [ ] Tool audit logging
 - [ ] External enterprise connectors
 
-The agent should be able to use tools deliberately rather than simply generating text.
+The Research Agent should use tools deliberately and observably rather than simply generating text.
 
 ---
 
-## Phase 7 — Advanced agent architecture
+## Phase 7 — Advanced multi-agent architecture
 
 **Status: ⬜ Planned**
 
-Evolve the current analytics workflow into a controlled agent system.
+Evolve the Research Agent into a controlled multi-agent intelligence system only where demonstrated requirements justify the additional complexity.
 
 ### Planned components
 
 - [ ] Supervisor/router
+- [ ] Research Agent
 - [ ] Analytics agent
-- [ ] SQL agent/tool
-- [ ] RAG agent
-- [ ] Web research agent
-- [ ] External-tool agent
+- [ ] SQL specialist
+- [ ] Internal knowledge retrieval specialist
+- [ ] Web research specialist
+- [ ] External-tool specialist
 - [ ] Synthesis agent
 - [ ] Shared state
 - [ ] Memory strategy where appropriate
@@ -252,18 +403,20 @@ The system should qualify as an agent architecture because it can select tools/r
 
 **Status: ⬜ Planned**
 
-Build evaluation into the platform rather than treating it as a final step.
+Evaluation is part of the product architecture, not a final-stage activity.
 
 ### Work items
 
 - [ ] Golden question dataset
 - [ ] SQL correctness evaluation
-- [ ] Intent classification evaluation
+- [ ] Routing accuracy evaluation
 - [ ] Retrieval precision/recall evaluation
+- [ ] Evidence quality evaluation
 - [ ] Answer quality evaluation
 - [ ] Citation/provenance evaluation
 - [ ] Hallucination tests
-- [ ] Agent trajectory evaluation
+- [ ] Research trajectory evaluation
+- [ ] Agent tool-selection evaluation
 - [ ] Latency benchmarks
 - [ ] Token/cost benchmarks
 - [ ] Automated regression suite
@@ -290,6 +443,7 @@ Every major architectural change should be evaluated against a known baseline.
 - [ ] Prompt-injection protections
 - [ ] Tool authorization
 - [ ] Input/output validation
+- [ ] External-source trust boundaries
 - [ ] Security testing
 
 Security controls must exist at multiple layers; prompt instructions alone are not considered a security boundary.
@@ -304,10 +458,12 @@ Security controls must exist at multiple layers; prompt instructions alone are n
 
 - [ ] Structured application logging
 - [ ] Agent execution tracing
+- [ ] Research trajectory tracing
 - [ ] Metrics
 - [ ] Request latency monitoring
 - [ ] SQL execution monitoring
 - [ ] Retrieval monitoring
+- [ ] External research monitoring
 - [ ] Token/cost monitoring
 - [ ] Error tracking
 - [ ] Retry policies
@@ -347,18 +503,20 @@ The platform must support a new organisation without copying and rewriting the a
                     ECD Intelligence Platform
                               |
                     +---------+---------+
-                    |   Agent Router    |
+                    |   Research Agent  |
                     +---------+---------+
                               |
         +---------------------+---------------------+
         |                     |                     |
-      SQL/RDB              External RAG         Web/APIs
+      SQL/RDB          Internal Knowledge      External Research
         |                     |                     |
-   Customer DB          Customer KBs          External data
+   Customer DB          Customer KBs          Web/APIs
         |                     |                     |
         +---------------------+---------------------+
                               |
-                       Synthesis/Answer
+                       Evidence Layer
+                              |
+                       Answer Synthesis
                               |
                     Grounded enterprise answer
 ```
@@ -389,7 +547,7 @@ Move from question answering toward proactive organisational intelligence.
 
 # Current architecture
 
-The current production path is intentionally simple and controlled:
+The current shipped path combines organisation-scoped analytics with the unstructured knowledge foundation:
 
 ```text
 User
@@ -400,45 +558,53 @@ FastAPI /api/v1
   v
 Organisation validation
   |
-  v
-Analytics Workflow (LangGraph)
-  |
-  +--> Intent / SQL planning
-  |
-  +--> SQL safety validation
-  |
-  +--> PostgreSQL
-  |
-  v
-Structured result
-  |
-  v
-Agent response
+  +----------------------+
+  |                      |
+  v                      v
+Analytics Workflow    Document/Vector Layer
+(LangGraph)           (pgvector)
+  |                      |
+  v                      v
+PostgreSQL          Organisation KB
 ```
 
-The next architecture increment will add an organisation-scoped RAG path alongside SQL rather than replacing the existing analytics path.
+The next architecture increment introduces the Research Agent above these capabilities:
 
 ```text
-                         /api/v1
-                            |
-                    Organisation scope
-                            |
-                +-----------+-----------+
-                |                       |
-             SQL/RDB                 RAG
-                |                       |
-          Structured data       Documents/KB
-                |                       |
-                +-----------+-----------+
-                            |
-                    Grounded response
+                         /api/v1/research
+                                |
+                        Organisation scope
+                                |
+                                v
+                       +------------------+
+                       |  Research Agent  |
+                       |    LangGraph     |
+                       +--------+---------+
+                                |
+             +------------------+------------------+
+             |                  |                  |
+             v                  v                  v
+            SQL          Internal Knowledge    External Research
+             |                  |                  |
+        PostgreSQL          pgvector             Web/APIs
+             |                  |                  |
+             +------------------+------------------+
+                                |
+                                v
+                         Evidence Aggregation
+                                |
+                                v
+                        Grounded Synthesis
+                                |
+                                v
+                         Answer + Citations
 ```
 
-This will evolve incrementally. We should not introduce additional agents, RAG, MCP, or external services merely for architectural appearance. Each component must solve a demonstrated requirement and have tests/evaluation around it.
+The Research Agent should be implemented incrementally. We should not introduce multiple agents, MCP, reranking, memory, or external services merely for architectural appearance. Each component must solve a demonstrated requirement and have tests/evaluation around it.
 
 ---
 
-# Development rules
+# Development and tracking rules
 
 These rules are part of the project workflow.
 
@@ -452,8 +618,10 @@ These rules are part of the project workflow.
 8. Add tests with new functionality.
 9. Keep security boundaries explicit and enforce them in code/database permissions, not only in prompts.
 10. Prefer small, verifiable increments over large rewrites.
-11. Do not ask the developer to copy project files into the conversation when the repository can be inspected directly on GitHub.
-12. After every completed increment, verify local `main` and GitHub `main` are synchronised before starting the next major extension.
+11. Do not introduce provider-specific assumptions such as fixed embedding dimensions into generic application logic.
+12. After every completed increment, verify local `main` and GitHub `main` are synchronised before starting the next major increment.
+13. Follow the project loop: **Build → Test → Demonstrate → Commit → Push → Update tracking → Move to next increment.**
+14. Preserve the latest verified test count as the regression baseline.
 
 ---
 
@@ -462,8 +630,10 @@ These rules are part of the project workflow.
 Latest verified local checkpoint:
 
 ```text
-72 passed
+107 passed
 ```
+
+The embedding/vector foundation has been verified with the full test suite. The embedding service dynamically discovers the active model's dimension, while vector storage and retrieval do not hard-code an embedding size in application code.
 
 The organisation-scoped API has been manually verified with:
 
@@ -475,8 +645,6 @@ POST /api/v1/agent/query
 }
 ```
 
-and returned a successful structured response containing the intent, organisation-scoped SQL query, result and PostgreSQL source.
-
 A nonexistent organisation is rejected before analytics execution:
 
 ```text
@@ -487,35 +655,55 @@ POST /api/v1/agent/query
 }
 ```
 
-with an explicit `Organisation 999999 does not exist.` error.
+with an explicit organisation-not-found error.
 
 ---
 
-# Next immediate milestone
+# Project tracking
 
-## Phase 4 — External RAG foundation
+## Completed
 
-Phase 2 is complete and verified. Phase 3 remains intentionally deferred while we establish the organisation-scoped retrieval foundation.
+- ✅ Enterprise foundation
+- ✅ Production API and multi-organisation architecture
+- ✅ Document/chunk foundation
+- ✅ Dynamic embedding service
+- ✅ pgvector storage
+- ✅ Organisation-scoped semantic retrieval
+- ✅ Vector and embedding service test coverage
+- ✅ Full regression suite: **107 passed**
 
-The next implementation sequence is:
+## Current
 
-1. Review the current GitHub codebase before changing anything.
-2. Confirm the existing API, organisation model, database session patterns, and test conventions.
-3. Define the document/knowledge-source schema and ownership relationships.
-4. Define RAG service interfaces without coupling the application to one embedding/vector provider.
-5. Add organisation-scoped document ingestion metadata.
-6. Implement parsing and chunking with provenance.
-7. Add embeddings and vector storage behind an abstraction.
-8. Implement organisation-filtered retrieval.
-9. Add retrieval citations/provenance.
-10. Add RAG unit/API/integration tests.
-11. Run the complete test suite.
-12. Update this README's tracking.
-13. Commit the completed increment.
-14. Push to GitHub.
-15. Pull/verify the clean GitHub checkpoint before the next increment.
+- 🚧 **Phase 4 — Research Agent**
+- 🚧 RAG-1: Research Agent state and LangGraph graph
+- ⬜ RAG-2: Question routing
+- ⬜ RAG-3: Internal knowledge retrieval tool
+- ⬜ RAG-4: SQL research tool
+- ⬜ RAG-5: External research tool
+- ⬜ RAG-6: Evidence aggregation
+- ⬜ RAG-7: Grounded answer synthesis
+- ⬜ RAG-8: Controlled research loop
+- ⬜ RAG-9: Research Agent API
 
-This sequence is intentionally strict so that the project remains reproducible and we always have a known-good checkpoint.
+## Next checkpoint
+
+The next implementation checkpoint is **RAG-1**.
+
+The immediate objective is to create the Research Agent's state model and LangGraph workflow without changing the already-shipped SQL or vector services.
+
+### RAG-1 acceptance criteria
+
+- [ ] `ResearchState` is defined
+- [ ] Evidence/provenance structures are defined
+- [ ] LangGraph research graph exists
+- [ ] Initial routing node exists
+- [ ] Graph can terminate cleanly
+- [ ] Existing analytics workflow remains unchanged
+- [ ] Research Agent unit tests are added
+- [ ] Full test suite remains green
+- [ ] README tracking is updated
+- [ ] Changes are committed
+- [ ] Changes are pushed to GitHub
 
 ---
 
@@ -523,4 +711,4 @@ This sequence is intentionally strict so that the project remains reproducible a
 
 GitHub: `james00junior/ECD-Intelligence-Platform`
 
-The repository history is the authoritative record of implementation progress. The README is the authoritative roadmap and feature-tracking document.
+The repository history is the authoritative record of implementation progress. This README is the authoritative roadmap and feature-tracking document.
