@@ -7,21 +7,69 @@
     <link rel="stylesheet" href="/static/styles.css">
   </head>
   <body>
-    <main class="app-shell">
-      <aside class="sidebar">
-        <a class="brand" href="/"><span class="brand-mark">✦</span> ECD Intelligence</a>
-        <div class="status"><span></span> Research agent online</div>
-        <section><p class="label">ORGANISATION</p><label class="org-input"><span>#</span><input id="organisation-id" type="number" min="1" value="1" aria-label="Organisation ID"></label></section>
-        <section><p class="label">START A RESEARCH THREAD</p><button class="suggestion" data-question="How many franchisees are there?">Franchisee overview</button><button class="suggestion" data-question="What is SmartStart's model?">SmartStart model</button><button class="suggestion" data-question="What does the programme say about quality?">Programme quality</button></section>
-        <p class="sidebar-footer">Grounded answers with source citations.</p>
-      </aside>
-      <section class="chat-panel">
-        <header><div><p class="eyebrow">RESEARCH WORKSPACE</p><h1>What would you like to know?</h1></div><div class="secure">● Tenant scoped</div></header>
-        <div id="messages" class="messages" aria-live="polite"><article class="message assistant"><div class="avatar">✦</div><div class="bubble"><p>I can research your organisation’s data, internal knowledge, and approved external sources. Ask a question to begin.</p></div></article></div>
-        <form id="chat-form" class="composer"><textarea id="question" rows="1" placeholder="Ask about your organisation…" aria-label="Research question"></textarea><button type="submit" aria-label="Send question">↑</button></form>
-        <p class="hint">Answers are generated only from retrieved evidence.</p>
-      </section>
-    </main>
+    <a class="skip-link" href="#question">Skip to message input</a>
+
+    <section id="login-view" class="login-view" aria-labelledby="login-title">
+      <div class="login-card">
+        <p class="brand login-brand"><span class="brand-mark" aria-hidden="true">✦</span> ECD Intelligence</p>
+        <p class="eyebrow">TEST LOGIN</p>
+        <h1 id="login-title">Sign in as an organisation</h1>
+        <p class="login-copy">
+          Pick an organisation to start a research chat. There is no password
+          in this prototype — the session stays in your browser and every
+          question is scoped to the organisation you choose.
+        </p>
+        <p id="login-status" class="status-line" role="status">Loading organisations…</p>
+        <ul id="org-list" class="org-list" aria-label="Organisations"></ul>
+      </div>
+    </section>
+
+    <div id="chat-view" class="chat-app" hidden>
+      <header class="chat-header">
+        <p class="brand"><span class="brand-mark" aria-hidden="true">✦</span> ECD Intelligence</p>
+        <div class="header-meta">
+          <p class="org-chip" title="Active organisation">
+            <span class="org-chip-label">Signed in as</span>
+            <strong id="active-org-name">Organisation</strong>
+          </p>
+          <button type="button" id="switch-org" class="text-button">Switch organisation</button>
+          <button type="button" id="logout" class="text-button">Log out</button>
+        </div>
+      </header>
+
+      <main class="chat-panel" aria-label="Research chat">
+        <div id="messages" class="messages" aria-live="polite"></div>
+        <div id="empty-state" class="empty-state">
+          <p class="eyebrow">RESEARCH CHAT</p>
+          <h2>What would you like to know?</h2>
+          <p>
+            I can answer from your organisation’s operational data and the
+            SmartStart knowledge base. Ask a question, or start with one of these.
+          </p>
+          <div class="prompt-grid">
+            <button type="button" class="prompt-card" data-question="What is the SmartStart model?">
+              <span class="prompt-kicker">Knowledge</span>
+              What is the SmartStart model?
+            </button>
+            <button type="button" class="prompt-card" data-question="What does the programme say about quality?">
+              <span class="prompt-kicker">Knowledge</span>
+              What does the programme say about quality?
+            </button>
+            <button type="button" class="prompt-card" data-question="How many franchisees are there?">
+              <span class="prompt-kicker">Operations</span>
+              How many franchisees are there?
+            </button>
+          </div>
+        </div>
+        <form id="chat-form" class="composer">
+          <label class="visually-hidden" for="question">Research question</label>
+          <textarea id="question" name="question" rows="1" required placeholder="Ask a grounded question…"></textarea>
+          <button type="submit" id="send-button" aria-label="Send message">Send</button>
+        </form>
+        <p class="hint">Enter to send · Shift+Enter for a new line · Answers cite retrieved evidence</p>
+      </main>
+    </div>
+
     <script src="/static/app.js"></script>
   </body>
 </html>

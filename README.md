@@ -2,7 +2,63 @@
 
 Enterprise AI intelligence platform for organisations operating in the Early Childhood Development (ECD) ecosystem.
 
-The platform is being built as a **production-oriented, multi-organisation intelligence system** rather than a single-purpose chatbot. It will allow an organisation to connect its own operational data, documents, knowledge sources, and external tools, then ask natural-language questions and receive grounded, traceable answers.
+This prototype lets an organisation ask natural-language questions about its operational data (SQL) and its knowledge base (RAG). The seeded organisation, **BrightStart ECD Network**, uses the public [SmartStart](https://smartstart.org.za/) website as its internal RAG corpus. Answers are grounded in retrieved evidence and include citations.
+
+There is no production authentication yet. The chat UI at `/` is a **test login**: choose an organisation, then chat in that organisation’s scope. The session is stored in the browser.
+
+## Getting started
+
+### Prerequisites
+
+- Python 3.11+ and [uv](https://docs.astral.sh/uv/)
+- Docker, for Postgres with pgvector
+- Optional: [Ollama](https://ollama.com/) with `nomic-embed-text` (otherwise embeddings fall back to Sentence Transformers)
+
+### 1. Start the database
+
+```bash
+docker compose up -d
+```
+
+### 2. Install, seed, and ingest SmartStart
+
+```bash
+uv sync
+uv run python -m app.database.seed
+uv run python scripts/ingest_smartstart.py
+```
+
+Seed also attempts the ingest after creating (or detecting) the organisation. A first ingest typically stores on the order of **12 pages / 50 chunks** for organisation 1. A second run should report `documents_unchanged: 12`.
+
+Live crawl is offline-safe: if smartstart.org.za is unreachable, setup continues. Skip the crawl with:
+
+```bash
+SMARTSTART_INGEST_SKIP=1 uv run python -m app.database.seed
+uv run python scripts/ingest_smartstart.py --skip
+```
+
+### 3. Start the API and open the chat
+
+```bash
+uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000).
+
+1. Choose **BrightStart ECD Network** (id 1).
+2. Ask a grounded question, for example:
+   - What is the SmartStart model?
+   - What does the programme say about quality?
+   - How many franchisees are there?
+3. Use **Switch organisation** or **Log out** in the header to change tenant.
+
+The chat posts to `POST /api/v1/research` so RAG is exercised. You can also call the API directly:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/research \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What is the SmartStart model?", "organisation_id": 1}'
+```
 
 ## Product vision
 
@@ -64,9 +120,13 @@ Legend:
 | Vector similarity search | ✅ Shipped |
 | Embedding deletion | ✅ Shipped |
 | Automated service/API/tool tests | ✅ Shipped |
+| Research Agent API `/api/v1/research` | ✅ Shipped |
+| Bounded research loop | ✅ Shipped |
+| SmartStart public-site RAG ingest | ✅ Shipped |
+| Organisation test login + research chat UI | ✅ Shipped |
 | GitHub version control | ✅ Shipped |
 
-**Current verified baseline: 135 automated tests passing.**
+**Current verified baseline: 165 automated tests passing.**
 
 The foundation is the baseline that all subsequent phases must preserve. New capabilities must be added incrementally and must not introduce hard-coded embedding dimensions or other provider-specific assumptions into the application architecture.
 
@@ -156,7 +216,7 @@ The application does **not** assume that embeddings are 384, 768, or any other f
 ### Verification checkpoint
 
 ```text
-107 passed
+165 passed
 ```
 
 ---
@@ -291,23 +351,31 @@ The Research Agent is not simply a vector-search wrapper. It is a controlled rea
 
 The agent should be able to recognise when the first retrieval attempt is insufficient and perform another controlled research step.
 
-- [ ] Evidence sufficiency evaluation
-- [ ] Follow-up retrieval
-- [ ] Query refinement
-- [ ] Maximum research-step limit
-- [ ] Failure/recovery path
-- [ ] Termination condition
-- [ ] Research trajectory tests
+- [x] Evidence sufficiency evaluation
+- [x] Follow-up retrieval
+- [x] Query refinement
+- [x] Maximum research-step limit
+- [x] Failure/recovery path
+- [x] Termination condition
+- [x] Research trajectory tests
 
 ### RAG-9 — Research Agent API
 
-- [ ] Add `/api/v1/research` endpoint
-- [ ] Define request schema
-- [ ] Define response schema
-- [ ] Return answer and evidence metadata
-- [ ] Return citations
-- [ ] Preserve organisation scope
-- [ ] Add API integration tests
+- [x] Add `/api/v1/research` endpoint
+- [x] Define request schema
+- [x] Define response schema
+- [x] Return answer and evidence metadata
+- [x] Return citations
+- [x] Preserve organisation scope
+- [x] Add API integration tests
+
+### Chat UI — organisation test login
+
+- [x] Serve a conversational UI at `/`
+- [x] List organisations from `GET /api/v1/organisations`
+- [x] Persist the selected organisation in the browser
+- [x] Chat against `POST /api/v1/research` with citations
+- [x] Logout / switch organisation
 
 ### Research Agent exit criteria
 
@@ -547,98 +615,47 @@ Move from question answering toward proactive organisational intelligence.
 
 # Current architecture
 
-The current shipped path combines organisation-scoped analytics with the unstructured knowledge foundation:
+The shipped path is a browser chat over the Research Agent:
 
 ```text
 User
   |
   v
-FastAPI /api/v1
+Chat UI /  (organisation test login)
+  |
+  v
+FastAPI /api/v1/research
   |
   v
 Organisation validation
   |
-  +----------------------+
-  |                      |
-  v                      v
-Analytics Workflow    Document/Vector Layer
-(LangGraph)           (pgvector)
-  |                      |
-  v                      v
-PostgreSQL          Organisation KB
+  v
+Research Agent (LangGraph)
+  |
+  +------------------+------------------+
+  |                  |                  |
+  v                  v                  v
+ SQL            Internal Knowledge   External Research
+  |                  |                  |
+PostgreSQL        pgvector/KB          Web
+  |                  |                  |
+  +------------------+------------------+
+                     |
+                     v
+              Grounded answer + citations
 ```
 
-The next architecture increment introduces the Research Agent above these capabilities:
+Analytics remain available at `POST /api/v1/agent/query`. Chat uses the research endpoint so RAG is exercised.
 
-```text
-                         /api/v1/research
-                                |
-                        Organisation scope
-                                |
-                                v
-                       +------------------+
-                       |  Research Agent  |
-                       |    LangGraph     |
-                       +--------+---------+
-                                |
-             +------------------+------------------+
-             |                  |                  |
-             v                  v                  v
-            SQL          Internal Knowledge    External Research
-             |                  |                  |
-        PostgreSQL          pgvector             Web/APIs
-             |                  |                  |
-             +------------------+------------------+
-                                |
-                                v
-                         Evidence Aggregation
-                                |
-                                v
-                        Grounded Synthesis
-                                |
-                                v
-                         Answer + Citations
-```
-
-The Research Agent should be implemented incrementally. We should not introduce multiple agents, MCP, reranking, memory, or external services merely for architectural appearance. Each component must solve a demonstrated requirement and have tests/evaluation around it.
+The Research Agent should continue to be extended incrementally. We should not introduce multiple agents, MCP, reranking, memory, or external services merely for architectural appearance. Each component must solve a demonstrated requirement and have tests/evaluation around it.
 
 ---
 
 # SmartStart public knowledge ingest
 
-The seeded organisation (`BrightStart ECD Network`, typically `organisation_id=1`) uses the **public** SmartStart website as its internal RAG corpus. The crawler stays on `https://smartstart.org.za/`, respects `robots.txt`, skips `portal.smartstart.org.za`, skips binaries, and caps the page count.
+See **Getting started** above for the usual commands. The seeded organisation (`BrightStart ECD Network`, typically `organisation_id=1`) uses the **public** SmartStart website as its internal RAG corpus. The crawler stays on `https://smartstart.org.za/`, respects `robots.txt`, skips `portal.smartstart.org.za`, skips binaries, and caps the page count.
 
-## Ingest locally
-
-Postgres must be running and the organisation must already exist (from seed):
-
-```bash
-uv run python -m app.database.seed
-uv run python scripts/ingest_smartstart.py
-```
-
-Seed itself also attempts this ingest after creating (or detecting) the organisation. Live crawl is offline-safe: if the site is unreachable, setup continues without failing.
-
-Skip the live crawl:
-
-```bash
-SMARTSTART_INGEST_SKIP=1 uv run python -m app.database.seed
-uv run python scripts/ingest_smartstart.py --skip
-```
-
-Embeddings prefer Ollama `nomic-embed-text` and fall back to Sentence Transformers if Ollama is not running.
-
-## Ask a grounded question
-
-Start the API and use the chat UI at `/`, or:
-
-```bash
-curl -X POST http://localhost:8000/api/v1/research \
-  -H "Content-Type: application/json" \
-  -d '{"question": "What is the SmartStart model?", "organisation_id": 1}'
-```
-
-Questions about the programme, policies, documents, or SmartStart are routed to the internal knowledge base and should return evidence plus citations from the ingested pages.
+Embeddings prefer Ollama `nomic-embed-text` and fall back to Sentence Transformers if Ollama is not running. Questions about the programme, policies, documents, or SmartStart are routed to the internal knowledge base and should return evidence plus citations from the ingested pages.
 
 ---
 
@@ -668,7 +685,7 @@ These rules are part of the project workflow.
 Latest verified local checkpoint:
 
 ```text
-107 passed
+165 passed
 ```
 
 The embedding/vector foundation has been verified with the full test suite. The embedding service dynamically discovers the active model's dimension, while vector storage and retrieval do not hard-code an embedding size in application code.
@@ -708,7 +725,7 @@ with an explicit organisation-not-found error.
 - ✅ pgvector storage
 - ✅ Organisation-scoped semantic retrieval
 - ✅ Vector and embedding service test coverage
-- ✅ Full regression suite: **135 passed**
+- ✅ Full regression suite: **165 passed**
 
 ## Current
 
@@ -720,14 +737,14 @@ with an explicit organisation-not-found error.
 - ✅ RAG-5: External research tool
 - ✅ RAG-6: Evidence aggregation
 - ✅ RAG-7: Grounded answer synthesis
-- ⬜ RAG-8: Controlled research loop
-- ⬜ RAG-9: Research Agent API
+- ✅ RAG-8: Controlled research loop
+- ✅ RAG-9: Research Agent API
+- ✅ Organisation test login and research chat UI
+- ✅ SmartStart public-site RAG ingest
 
 ## Next checkpoint
 
-The next implementation checkpoint is **RAG-8 — Controlled research loop**.
-
-RAG-5 through RAG-7 add controlled external research, tenant-safe evidence aggregation, and deterministic citation-backed synthesis. RAG-8 will add bounded follow-up retrieval and evidence-sufficiency evaluation.
+RAG-1 through RAG-9, SmartStart ingest, and the organisation chat UI are in place. Remaining Phase 4 items are extra research sources (external APIs, customer-provided knowledge). The next major planned phase is **Phase 5 — LLM-powered analytics and reasoning**, plus production authentication in Phase 9.
 
 ### RAG-1 acceptance criteria
 

@@ -51,7 +51,28 @@ def test_research_endpoint_rejects_unknown_organisation(monkeypatch):
 def test_chat_interface_and_assets_are_served():
     response = client.get("/")
     stylesheet = client.get("/static/styles.css")
+    script = client.get("/static/app.js")
 
     assert response.status_code == 200
     assert "ECD Intelligence" in response.text
+    assert "Sign in as an organisation" in response.text
+    assert 'id="login-view"' in response.text
+    assert 'id="chat-form"' in response.text
+    assert "What is the SmartStart model?" in response.text
+    assert "What does the programme say about quality?" in response.text
+    assert "How many franchisees are there?" in response.text
     assert stylesheet.status_code == 200
+    assert script.status_code == 200
+    assert "/api/v1/organisations" in script.text
+    assert "/api/v1/research" in script.text
+    assert "ecd.organisation" in script.text
+
+
+def test_list_organisations_includes_seeded_org():
+    response = client.get("/api/v1/organisations")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload
+    assert payload[0]["id"] == 1
+    assert payload[0]["name"] == "BrightStart ECD Network"
