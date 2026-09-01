@@ -1,11 +1,17 @@
+from __future__ import annotations
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
-from app.database.database import engine
 
-
-def organisation_exists(organisation_id: int) -> bool:
+def organisation_exists(
+    db: Session,
+    organisation_id: int,
+) -> bool:
     """
     Check whether an organisation exists.
+
+    The caller owns the database session lifecycle.
     """
 
     query = text(
@@ -17,16 +23,20 @@ def organisation_exists(organisation_id: int) -> bool:
         """
     )
 
-    with engine.connect() as connection:
-        result = connection.execute(
-            query,
-            {"organisation_id": organisation_id},
-        ).first()
+    result = db.execute(
+        query,
+        {
+            "organisation_id": organisation_id,
+        },
+    ).first()
 
     return result is not None
 
 
-def get_organisation(organisation_id: int) -> dict | None:
+def get_organisation(
+    db: Session,
+    organisation_id: int,
+) -> dict | None:
     """
     Return an organisation by ID.
 
@@ -45,11 +55,12 @@ def get_organisation(organisation_id: int) -> dict | None:
         """
     )
 
-    with engine.connect() as connection:
-        row = connection.execute(
-            query,
-            {"organisation_id": organisation_id},
-        ).mappings().first()
+    row = db.execute(
+        query,
+        {
+            "organisation_id": organisation_id,
+        },
+    ).mappings().first()
 
     if row is None:
         return None
