@@ -11,6 +11,8 @@ from sentence_transformers import SentenceTransformer
 DEFAULT_PROVIDER = "ollama"
 DEFAULT_MODEL = "nomic-embed-text"
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
+FALLBACK_PROVIDER = "sentence-transformers"
+FALLBACK_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 EmbeddingProvider = Literal[
     "ollama",
@@ -164,6 +166,41 @@ def embed_documents(
         )
         for vector in embeddings
     ]
+
+
+def embed_documents_with_fallback(
+    texts: list[str],
+    provider: str | None = None,
+    model_name: str | None = None,
+    ollama_base_url: str = DEFAULT_OLLAMA_BASE_URL,
+) -> list[EmbeddingResult]:
+    """
+    Generate embeddings, falling back from Ollama to
+    Sentence Transformers when the preferred provider fails.
+    """
+
+    preferred_provider = (provider or DEFAULT_PROVIDER).lower().strip()
+    preferred_model = model_name or DEFAULT_MODEL
+
+    try:
+        return embed_documents(
+            texts,
+            provider=preferred_provider,
+            model_name=preferred_model,
+            ollama_base_url=ollama_base_url,
+        )
+    except Exception:
+        if preferred_provider in {
+            "sentence-transformers",
+            "sentence_transformer",
+        }:
+            raise
+        return embed_documents(
+            texts,
+            provider=FALLBACK_PROVIDER,
+            model_name=FALLBACK_MODEL,
+            ollama_base_url=ollama_base_url,
+        )
 
 
 def embed_text(

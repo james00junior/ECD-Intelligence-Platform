@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.services.chunking_service import chunk_document
-from app.services.embedding_service import embed_documents
+from app.services.embedding_service import EmbeddingResult, embed_documents_with_fallback
 from app.services.vector_service import store_chunk_embedding
 
 
@@ -21,12 +22,26 @@ def _content_hash(content: str) -> str:
     ).hexdigest()
 
 
+def _embedding_vector(
+    value: EmbeddingResult | list[float],
+) -> list[float]:
+    if isinstance(value, EmbeddingResult):
+        return value.embedding
+    if hasattr(value, "embedding"):
+        return list(value.embedding)
+    return list(value)
+
+
 def ingest_document(
     db: Session,
     organisation_id: int,
     document_id: int,
     content: str,
     metadata: dict[str, Any] | None = None,
+    *,
+    replace_existing: bool = True,
+    embedding_provider: str | None = None,
+    embedding_model: str | None = None,
 ) -> dict:
     """
     Chunk a document, generate embeddings, and store the
@@ -58,6 +73,22 @@ def ingest_document(
         raise ValueError(
             "Document does not exist for this organisation."
         )
+
+    if replace_existing:
+        db.execute(
+            text(
+                """
+                DELETE FROM document_chunks
+                WHERE document_id = :document_id
+                  AND organisation_id = :organisation_id
+                """
+            ),
+            {
+                "document_id": document_id,
+                "organisation_id": organisation_id,
+            },
+        )
+        db.flush()
 
     chunks = chunk_document(content)
 
@@ -104,14 +135,12 @@ def ingest_document(
                 {
                     "organisation_id": organisation_id,
                     "document_id": document_id,
-                    "chunk_index": chunk.chunk_index,
                     "content": chunk.content,
+                    "chunk_index": chunk.chunk_index,
                     "content_hash": _content_hash(
                         chunk.content
                     ),
-                    "metadata": __import__(
-                        "json"
-                    ).dumps(chunk_metadata),
+                    "metadata": json.dumps(chunk_metadata),
                 },
             )
 
@@ -126,11 +155,13 @@ def ingest_document(
 
         db.flush()
 
-        embeddings = embed_documents(
+        embeddings = embed_documents_with_fallback(
             [
                 chunk["content"]
                 for chunk in chunk_records
-            ]
+            ],
+            provider=embedding_provider,
+            model_name=embedding_model,
         )
 
         for chunk, embedding in zip(
@@ -140,7 +171,7 @@ def ingest_document(
             store_chunk_embedding(
                 db=db,
                 chunk_id=chunk["chunk_id"],
-                embedding=embedding,
+                embedding=_embedding_vector(embedding),
             )
 
     except Exception:

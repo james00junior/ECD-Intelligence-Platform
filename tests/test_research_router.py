@@ -12,6 +12,16 @@ def test_routes_document_question_to_internal_knowledge():
     assert route_research_question("What does our programme guide say?") == "internal_knowledge"
 
 
+def test_routes_smartstart_model_question_to_internal_knowledge():
+    assert route_research_question("What is SmartStart's model?") == "internal_knowledge"
+
+
+def test_routes_programme_quality_question_to_internal_knowledge():
+    assert route_research_question(
+        "What does the programme say about quality?"
+    ) == "internal_knowledge"
+
+
 def test_routes_combined_question_to_sql_and_internal_knowledge():
     question = "How many franchisees are there, and what does our report say?"
     assert route_research_question(question) == "sql_and_internal_knowledge"

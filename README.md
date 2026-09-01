@@ -604,6 +604,44 @@ The Research Agent should be implemented incrementally. We should not introduce 
 
 ---
 
+# SmartStart public knowledge ingest
+
+The seeded organisation (`BrightStart ECD Network`, typically `organisation_id=1`) uses the **public** SmartStart website as its internal RAG corpus. The crawler stays on `https://smartstart.org.za/`, respects `robots.txt`, skips `portal.smartstart.org.za`, skips binaries, and caps the page count.
+
+## Ingest locally
+
+Postgres must be running and the organisation must already exist (from seed):
+
+```bash
+uv run python -m app.database.seed
+uv run python scripts/ingest_smartstart.py
+```
+
+Seed itself also attempts this ingest after creating (or detecting) the organisation. Live crawl is offline-safe: if the site is unreachable, setup continues without failing.
+
+Skip the live crawl:
+
+```bash
+SMARTSTART_INGEST_SKIP=1 uv run python -m app.database.seed
+uv run python scripts/ingest_smartstart.py --skip
+```
+
+Embeddings prefer Ollama `nomic-embed-text` and fall back to Sentence Transformers if Ollama is not running.
+
+## Ask a grounded question
+
+Start the API and use the chat UI at `/`, or:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/research \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What is the SmartStart model?", "organisation_id": 1}'
+```
+
+Questions about the programme, policies, documents, or SmartStart are routed to the internal knowledge base and should return evidence plus citations from the ingested pages.
+
+---
+
 # Development and tracking rules
 
 These rules are part of the project workflow.

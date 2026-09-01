@@ -20,8 +20,12 @@ ResearchRoute = Literal[
 
 INTERNAL_KNOWLEDGE_KEYWORDS = frozenset({
     "document", "documents", "documentation", "policy", "policies",
-    "programme guide", "program guide", "report", "reports",
+    "programme guide", "program guide", "programme", "programmes",
+    "program", "programs",
+    "report", "reports",
     "knowledge base", "our knowledge", "our latest",
+    "smartstart",
+    "social franchise",
 })
 
 EXTERNAL_RESEARCH_KEYWORDS = frozenset({

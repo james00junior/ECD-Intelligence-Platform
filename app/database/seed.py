@@ -73,6 +73,11 @@ def seed_database() -> None:
             print(
                 "Database already contains ECD data."
             )
+            organisation = db.query(Organisation).order_by(
+                Organisation.id
+            ).first()
+            if organisation is not None:
+                _ingest_smartstart_knowledge(organisation.id)
             return
 
         # ---------------------------------------------------------
@@ -810,12 +815,49 @@ def seed_database() -> None:
             f"Children: {len(children)}"
         )
 
+        _ingest_smartstart_knowledge(organisation.id)
+
     except Exception:
         db.rollback()
         raise
 
     finally:
         db.close()
+
+
+
+def _ingest_smartstart_knowledge(organisation_id: int) -> None:
+    """
+    Fill the seeded organisation knowledge base from the public
+    SmartStart website.
+
+    Live crawl is skippable via SMARTSTART_INGEST_SKIP and is
+    offline-safe when the network is unavailable.
+    """
+
+    from app.services.smartstart_ingestion_service import (
+        ingest_smartstart_for_dev_setup,
+    )
+
+    summary = ingest_smartstart_for_dev_setup(
+        organisation_id=organisation_id,
+    )
+
+    if summary.get("skipped"):
+        print(
+            "SmartStart ingest skipped: "
+            f"{summary.get('reason')}"
+        )
+        return
+
+    print(
+        "SmartStart public pages ingested: "
+        f"{summary.get('documents_ingested', 0)}"
+    )
+    print(
+        "SmartStart chunks created: "
+        f"{summary.get('chunks_created', 0)}"
+    )
 
 
 # -------------------------------------------------------------
