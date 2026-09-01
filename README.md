@@ -701,9 +701,9 @@ RAG-1 established the typed Research Agent state, evidence/provenance contracts,
 - [x] Existing analytics workflow remains unchanged
 - [x] Research Agent unit tests are added
 - [x] Full test suite remains green
-- [ ] README tracking is updated
-- [ ] Changes are committed
-- [ ] Changes are pushed to GitHub
+- [x] README tracking is updated
+- [x] Changes are committed
+- [x] Changes are pushed to GitHub
 
 ---
 
