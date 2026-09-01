@@ -1,8 +1,4 @@
-from app.workflows.research_workflow import (
-    PENDING_ROUTE,
-    initial_routing_node,
-    research_workflow,
-)
+from app.workflows.research_workflow import initial_routing_node, research_workflow
 
 
 def test_initial_routing_node_preserves_existing_evidence():
@@ -25,35 +21,40 @@ def test_initial_routing_node_preserves_existing_evidence():
 
     result = initial_routing_node(
         {
-            "question": "What improves programme quality?",
+            "question": "What does our programme guide say about quality?",
             "organisation_id": 1,
             "evidence": evidence,
             "research_steps": 1,
         }
     )
 
-    assert result["route"] == PENDING_ROUTE
+    assert result["route"] == "internal_knowledge"
     assert result["evidence"] == evidence
     assert result["research_steps"] == 1
     assert result["error"] is None
 
 
-def test_research_workflow_terminates_with_empty_evidence():
+def test_research_workflow_terminates_for_direct_question():
     result = research_workflow.invoke(
         {
-            "question": "What improves programme quality?",
+            "question": "Hello there",
             "organisation_id": 1,
         }
     )
 
-    assert result["route"] == PENDING_ROUTE
+    assert result["route"] == "direct"
+    assert result["source_requirements"] == []
     assert result["evidence"] == []
     assert result["research_steps"] == 0
     assert result["answer"] is None
     assert result["error"] is None
 
 
-def test_research_workflow_preserves_organisation_scope():
+def test_research_workflow_preserves_organisation_scope(monkeypatch):
+    monkeypatch.setattr(
+        "app.workflows.research_workflow.search_internal_knowledge",
+        lambda **kwargs: [],
+    )
     result = research_workflow.invoke(
         {
             "question": "Summarise the organisation's programme guide.",
@@ -62,4 +63,30 @@ def test_research_workflow_preserves_organisation_scope():
     )
 
     assert result["organisation_id"] == 42
-    assert result["route"] == PENDING_ROUTE
+    assert result["route"] == "internal_knowledge"
+
+
+def test_research_workflow_collects_sql_and_document_evidence(monkeypatch):
+    sql_evidence = {"evidence_id": "sql:count_franchisees"}
+    document_evidence = {"evidence_id": "document-chunk:1"}
+
+    monkeypatch.setattr(
+        "app.workflows.research_workflow.run_sql_research",
+        lambda **kwargs: {"evidence": [sql_evidence], "error": None},
+    )
+    monkeypatch.setattr(
+        "app.workflows.research_workflow.search_internal_knowledge",
+        lambda **kwargs: [document_evidence],
+    )
+
+    result = research_workflow.invoke(
+        {
+            "question": "How many franchisees are there, and what does our report say?",
+            "organisation_id": 1,
+        }
+    )
+
+    assert result["route"] == "sql_and_internal_knowledge"
+    assert result["source_requirements"] == ["sql", "internal_document"]
+    assert result["evidence"] == [sql_evidence, document_evidence]
+    assert result["research_steps"] == 2

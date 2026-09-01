@@ -66,7 +66,7 @@ Legend:
 | Automated service/API/tool tests | ✅ Shipped |
 | GitHub version control | ✅ Shipped |
 
-**Current verified baseline: 110 automated tests passing.**
+**Current verified baseline: 125 automated tests passing.**
 
 The foundation is the baseline that all subsequent phases must preserve. New capabilities must be added incrementally and must not introduce hard-coded embedding dimensions or other provider-specific assumptions into the application architecture.
 
@@ -226,34 +226,34 @@ The Research Agent is not simply a vector-search wrapper. It is a controlled rea
 
 ### RAG-2 — Research question routing
 
-- [ ] Classify question requirements
-- [ ] Detect SQL-required questions
-- [ ] Detect internal-knowledge questions
-- [ ] Detect external-research questions
-- [ ] Detect multi-source questions
-- [ ] Support direct-answer path where retrieval is unnecessary
-- [ ] Add routing tests
+- [x] Classify question requirements
+- [x] Detect SQL-required questions
+- [x] Detect internal-knowledge questions
+- [x] Detect external-research questions
+- [x] Detect multi-source questions
+- [x] Support direct-answer path where retrieval is unnecessary
+- [x] Add routing tests
 
 ### RAG-3 — Internal knowledge retrieval tool
 
-- [ ] Wrap vector search as an agent tool
-- [ ] Generate query embeddings through the embedding service
-- [ ] Preserve runtime embedding dimensions
-- [ ] Enforce organisation filtering
-- [ ] Return document/chunk metadata
-- [ ] Return similarity scores
-- [ ] Return provenance
-- [ ] Add retrieval tool tests
+- [x] Wrap vector search as an agent tool
+- [x] Generate query embeddings through the embedding service
+- [x] Preserve runtime embedding dimensions
+- [x] Enforce organisation filtering
+- [x] Return document/chunk metadata
+- [x] Return similarity scores
+- [x] Return provenance
+- [x] Add retrieval tool tests
 
 ### RAG-4 — SQL research tool
 
-- [ ] Expose safe SQL analytics to the Research Agent
-- [ ] Preserve organisation validation
-- [ ] Preserve read-only SQL enforcement
-- [ ] Return structured evidence
-- [ ] Include query/source metadata
-- [ ] Prevent unrestricted database access
-- [ ] Add agent-to-SQL tests
+- [x] Expose safe SQL analytics to the Research Agent
+- [x] Preserve organisation validation
+- [x] Preserve read-only SQL enforcement
+- [x] Return structured evidence
+- [x] Include query/source metadata
+- [x] Prevent unrestricted database access
+- [x] Add agent-to-SQL tests
 
 ### RAG-5 — External research tool
 
@@ -670,15 +670,15 @@ with an explicit organisation-not-found error.
 - ✅ pgvector storage
 - ✅ Organisation-scoped semantic retrieval
 - ✅ Vector and embedding service test coverage
-- ✅ Full regression suite: **110 passed**
+- ✅ Full regression suite: **125 passed**
 
 ## Current
 
 - 🚧 **Phase 4 — Research Agent**
 - ✅ RAG-1: Research Agent state and LangGraph graph
-- ⬜ RAG-2: Question routing
-- ⬜ RAG-3: Internal knowledge retrieval tool
-- ⬜ RAG-4: SQL research tool
+- ✅ RAG-2: Question routing
+- ✅ RAG-3: Internal knowledge retrieval tool
+- ✅ RAG-4: SQL research tool
 - ⬜ RAG-5: External research tool
 - ⬜ RAG-6: Evidence aggregation
 - ⬜ RAG-7: Grounded answer synthesis
@@ -687,9 +687,9 @@ with an explicit organisation-not-found error.
 
 ## Next checkpoint
 
-The next implementation checkpoint is **RAG-2 — Research question routing**.
+The next implementation checkpoint is **RAG-5 — External research tool**.
 
-RAG-1 established the typed Research Agent state, evidence/provenance contracts, and a deterministic LangGraph skeleton without changing the already-shipped SQL or vector services. RAG-2 will replace the current pending route with deterministic source-requirement classification.
+RAG-2 through RAG-4 add deterministic source routing, organisation-filtered internal knowledge retrieval, and safe SQL evidence collection. RAG-5 will add a controlled external-research interface with mocked-provider tests.
 
 ### RAG-1 acceptance criteria
 
