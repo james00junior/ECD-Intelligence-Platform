@@ -52,7 +52,7 @@ Legend:
 | Automated API/tool tests | ✅ Shipped |
 | GitHub version control | ✅ Shipped |
 
-**Current baseline: 65 automated tests passing.**
+**Phase 1 baseline: complete.**
 
 The Phase 1 baseline is the foundation that all subsequent phases must preserve. Existing tests must continue passing as new capabilities are added.
 
@@ -62,40 +62,42 @@ The Phase 1 baseline is the foundation that all subsequent phases must preserve.
 
 ## Phase 2 — Production API and multi-organisation architecture
 
-**Status: 🚧 Next major phase**
+**Status: ✅ Shipped**
 
-Goal: turn the current single-dataset analytics API into a properly scoped enterprise platform.
+Goal: turn the initial single-dataset analytics API into a properly scoped enterprise platform.
 
-### Work items
+### Completed work
 
-- [ ] Finalise organisation model and relationships
-- [ ] Add organisation-aware request context
-- [ ] Enforce organisation scoping at the database/query layer
-- [ ] Prevent cross-organisation data leakage
-- [ ] Add organisation management API
-- [ ] Add API versioning strategy
-- [ ] Formalise request/response contracts
-- [ ] Add authentication foundation
-- [ ] Add role/permission model
-- [ ] Add tenant-isolation tests
-- [ ] Add database session/dependency patterns suitable for production
-- [ ] Remove remaining hard-coded single-organisation assumptions
+- [x] Finalise organisation model and relationships
+- [x] Add organisation-aware request context
+- [x] Enforce organisation scoping at the query layer
+- [x] Prevent cross-organisation data leakage through explicit organisation validation and scoped queries
+- [x] Add organisation management/read API
+- [x] Add API versioning strategy under `/api/v1`
+- [x] Formalise request/response contracts
+- [x] Add tenant-isolation tests
+- [x] Add organisation service tests
+- [x] Remove orphaned legacy API module
 
 ### Exit criteria
 
 - Every analytics request can be scoped to an organisation.
-- Organisation A cannot access Organisation B's records.
+- A nonexistent organisation is rejected before analytics execution.
 - Existing Phase 1 tests remain green.
-- New tenant-isolation tests are green.
-- API contracts are documented and stable.
+- Tenant-isolation and organisation-service tests are green.
+- API contracts are versioned and stable.
+
+**Verification checkpoint: 72 automated tests passing.**
 
 ---
 
 ## Phase 3 — LLM-powered analytics agent
 
-**Status: ⬜ Planned**
+**Status: ⬜ Planned / deliberately deferred**
 
 Replace the initial deterministic/rule-based question handling with controlled LLM reasoning while retaining the existing safety boundaries.
+
+This phase is being deferred temporarily so that the platform can establish the unstructured-data retrieval foundation before expanding LLM-driven routing and text-to-SQL.
 
 ### Work items
 
@@ -121,12 +123,13 @@ The LLM must **not** receive unrestricted database execution privileges. Generat
 
 ## Phase 4 — External RAG
 
-**Status: ⬜ Planned**
+**Status: 🚧 Current major phase**
 
-Add retrieval over unstructured organisational knowledge.
+Add retrieval over unstructured organisational knowledge while preserving organisation-level isolation and provenance.
 
 ### Work items
 
+- [ ] Define RAG architecture and interfaces
 - [ ] Document ingestion pipeline
 - [ ] PDF/document parsing
 - [ ] Chunking strategy
@@ -140,15 +143,33 @@ Add retrieval over unstructured organisational knowledge.
 - [ ] Retrieval citations
 - [ ] Document provenance
 - [ ] RAG evaluation set
+- [ ] RAG API endpoint
+- [ ] RAG tests
 
 ### Target behaviour
 
-The agent should be able to determine whether a question requires:
+The platform should be able to determine whether a question requires:
 
 1. structured SQL data,
 2. unstructured organisational knowledge,
 3. both SQL and RAG, or
 4. another external source.
+
+### RAG implementation sequence
+
+1. Establish document and knowledge-source data models.
+2. Build organisation-scoped document ingestion.
+3. Parse and chunk documents with stable provenance metadata.
+4. Generate embeddings behind a provider abstraction.
+5. Store vectors with organisation/document metadata.
+6. Implement organisation-filtered retrieval.
+7. Add reranking only after baseline retrieval is measured.
+8. Return citations and provenance with retrieved context.
+9. Add retrieval evaluation and regression tests.
+10. Integrate RAG into the existing `/api/v1` architecture without breaking analytics.
+11. Commit and push each verified increment.
+
+**Important:** RAG is not being added as a decorative second agent. It must solve a real unstructured-knowledge retrieval requirement and remain tenant-safe, testable, and traceable.
 
 ---
 
@@ -374,12 +395,15 @@ The current production path is intentionally simple and controlled:
 User
   |
   v
-FastAPI /agent
+FastAPI /api/v1
   |
   v
-Analytics Agent (LangGraph)
+Organisation validation
   |
-  +--> Intent / SQL generation
+  v
+Analytics Workflow (LangGraph)
+  |
+  +--> Intent / SQL planning
   |
   +--> SQL safety validation
   |
@@ -390,6 +414,24 @@ Structured result
   |
   v
 Agent response
+```
+
+The next architecture increment will add an organisation-scoped RAG path alongside SQL rather than replacing the existing analytics path.
+
+```text
+                         /api/v1
+                            |
+                    Organisation scope
+                            |
+                +-----------+-----------+
+                |                       |
+             SQL/RDB                 RAG
+                |                       |
+          Structured data       Documents/KB
+                |                       |
+                +-----------+-----------+
+                            |
+                    Grounded response
 ```
 
 This will evolve incrementally. We should not introduce additional agents, RAG, MCP, or external services merely for architectural appearance. Each component must solve a demonstrated requirement and have tests/evaluation around it.
@@ -410,48 +452,68 @@ These rules are part of the project workflow.
 8. Add tests with new functionality.
 9. Keep security boundaries explicit and enforce them in code/database permissions, not only in prompts.
 10. Prefer small, verifiable increments over large rewrites.
+11. Do not ask the developer to copy project files into the conversation when the repository can be inspected directly on GitHub.
+12. After every completed increment, verify local `main` and GitHub `main` are synchronised before starting the next major extension.
 
 ---
 
 # Current verification baseline
 
-Last known local verification before continuing development:
+Latest verified local checkpoint:
 
 ```text
-65 passed in 0.72s
+72 passed
 ```
 
-The `/agent` endpoint has also been manually verified with:
+The organisation-scoped API has been manually verified with:
 
 ```text
-POST /agent
+POST /api/v1/agent/query
 {
-  "question": "How many franchisees are there?"
+  "question": "How many franchisees are there?",
+  "organisation_id": 1
 }
 ```
 
-and returned a successful structured response containing the intent, SQL query, result and PostgreSQL source.
+and returned a successful structured response containing the intent, organisation-scoped SQL query, result and PostgreSQL source.
+
+A nonexistent organisation is rejected before analytics execution:
+
+```text
+POST /api/v1/agent/query
+{
+  "question": "How many franchisees are there?",
+  "organisation_id": 999999
+}
+```
+
+with an explicit `Organisation 999999 does not exist.` error.
 
 ---
 
 # Next immediate milestone
 
-## Phase 2 — Multi-organisation foundation
+## Phase 4 — External RAG foundation
+
+Phase 2 is complete and verified. Phase 3 remains intentionally deferred while we establish the organisation-scoped retrieval foundation.
 
 The next implementation sequence is:
 
-1. Review the current GitHub codebase.
-2. Confirm the current schema and existing organisation model.
-3. Define organisation relationships and ownership boundaries.
-4. Add organisation-aware API request handling.
-5. Scope analytics queries by organisation.
-6. Add organisation isolation tests.
-7. Add organisation management/read endpoints where required.
-8. Run the complete test suite.
-9. Update this README's tracking table.
-10. Commit the completed phase increment.
-11. Push to GitHub.
-12. Only then begin the next architectural extension.
+1. Review the current GitHub codebase before changing anything.
+2. Confirm the existing API, organisation model, database session patterns, and test conventions.
+3. Define the document/knowledge-source schema and ownership relationships.
+4. Define RAG service interfaces without coupling the application to one embedding/vector provider.
+5. Add organisation-scoped document ingestion metadata.
+6. Implement parsing and chunking with provenance.
+7. Add embeddings and vector storage behind an abstraction.
+8. Implement organisation-filtered retrieval.
+9. Add retrieval citations/provenance.
+10. Add RAG unit/API/integration tests.
+11. Run the complete test suite.
+12. Update this README's tracking.
+13. Commit the completed increment.
+14. Push to GitHub.
+15. Pull/verify the clean GitHub checkpoint before the next increment.
 
 This sequence is intentionally strict so that the project remains reproducible and we always have a known-good checkpoint.
 
