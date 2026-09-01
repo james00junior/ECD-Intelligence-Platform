@@ -32,6 +32,87 @@ class Organisation(Base):
     )
 
 
+class KnowledgeSource(Base):
+    __tablename__ = "knowledge_sources"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    organisation_id: Mapped[int] = mapped_column(
+        ForeignKey("organisations.id"),
+        nullable=False,
+        index=True,
+    )
+
+    name: Mapped[str] = mapped_column(
+        String(200),
+        nullable=False,
+    )
+
+    source_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        index=True,
+    )
+
+    base_url: Mapped[str | None] = mapped_column(
+        String(1000),
+        nullable=True,
+    )
+
+
+class Document(Base):
+    __tablename__ = "documents"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    organisation_id: Mapped[int] = mapped_column(
+        ForeignKey("organisations.id"),
+        nullable=False,
+        index=True,
+    )
+
+    knowledge_source_id: Mapped[int] = mapped_column(
+        ForeignKey("knowledge_sources.id"),
+        nullable=False,
+        index=True,
+    )
+
+    title: Mapped[str] = mapped_column(
+        String(500),
+        nullable=False,
+    )
+
+    document_type: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        index=True,
+    )
+
+    source_uri: Mapped[str] = mapped_column(
+        String(2000),
+        nullable=False,
+    )
+
+    content_hash: Mapped[str | None] = mapped_column(
+        String(128),
+        nullable=True,
+        index=True,
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default="active",
+        index=True,
+    )
+
+
 class Province(Base):
     __tablename__ = "provinces"
 
