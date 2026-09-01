@@ -66,7 +66,7 @@ Legend:
 | Automated service/API/tool tests | ✅ Shipped |
 | GitHub version control | ✅ Shipped |
 
-**Current verified baseline: 107 automated tests passing.**
+**Current verified baseline: 110 automated tests passing.**
 
 The foundation is the baseline that all subsequent phases must preserve. New capabilities must be added incrementally and must not introduce hard-coded embedding dimensions or other provider-specific assumptions into the application architecture.
 
@@ -216,13 +216,13 @@ The Research Agent is not simply a vector-search wrapper. It is a controlled rea
 
 ### RAG-1 — Research Agent state and graph
 
-- [ ] Define `ResearchState`
-- [ ] Define research evidence schema
-- [ ] Define source/provenance schema
-- [ ] Define graph nodes and transitions
-- [ ] Define terminal answer state
-- [ ] Add deterministic graph tests
-- [ ] Preserve existing analytics workflow
+- [x] Define `ResearchState`
+- [x] Define research evidence schema
+- [x] Define source/provenance schema
+- [x] Define graph nodes and transitions
+- [x] Define terminal answer state
+- [x] Add deterministic graph tests
+- [x] Preserve existing analytics workflow
 
 ### RAG-2 — Research question routing
 
@@ -670,12 +670,12 @@ with an explicit organisation-not-found error.
 - ✅ pgvector storage
 - ✅ Organisation-scoped semantic retrieval
 - ✅ Vector and embedding service test coverage
-- ✅ Full regression suite: **107 passed**
+- ✅ Full regression suite: **110 passed**
 
 ## Current
 
 - 🚧 **Phase 4 — Research Agent**
-- 🚧 RAG-1: Research Agent state and LangGraph graph
+- ✅ RAG-1: Research Agent state and LangGraph graph
 - ⬜ RAG-2: Question routing
 - ⬜ RAG-3: Internal knowledge retrieval tool
 - ⬜ RAG-4: SQL research tool
@@ -687,20 +687,20 @@ with an explicit organisation-not-found error.
 
 ## Next checkpoint
 
-The next implementation checkpoint is **RAG-1**.
+The next implementation checkpoint is **RAG-2 — Research question routing**.
 
-The immediate objective is to create the Research Agent's state model and LangGraph workflow without changing the already-shipped SQL or vector services.
+RAG-1 established the typed Research Agent state, evidence/provenance contracts, and a deterministic LangGraph skeleton without changing the already-shipped SQL or vector services. RAG-2 will replace the current pending route with deterministic source-requirement classification.
 
 ### RAG-1 acceptance criteria
 
-- [ ] `ResearchState` is defined
-- [ ] Evidence/provenance structures are defined
-- [ ] LangGraph research graph exists
-- [ ] Initial routing node exists
-- [ ] Graph can terminate cleanly
-- [ ] Existing analytics workflow remains unchanged
-- [ ] Research Agent unit tests are added
-- [ ] Full test suite remains green
+- [x] `ResearchState` is defined
+- [x] Evidence/provenance structures are defined
+- [x] LangGraph research graph exists
+- [x] Initial routing node exists
+- [x] Graph can terminate cleanly
+- [x] Existing analytics workflow remains unchanged
+- [x] Research Agent unit tests are added
+- [x] Full test suite remains green
 - [ ] README tracking is updated
 - [ ] Changes are committed
 - [ ] Changes are pushed to GitHub
