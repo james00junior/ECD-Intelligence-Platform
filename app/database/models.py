@@ -1,5 +1,5 @@
 from datetime import date
-
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import Date
 from sqlalchemy import Float
 from sqlalchemy import ForeignKey
@@ -7,7 +7,13 @@ from sqlalchemy import Integer
 from sqlalchemy import String
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
-
+from sqlalchemy import (
+    JSON,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from app.database.database import Base
 
 
@@ -112,6 +118,52 @@ class Document(Base):
         index=True,
     )
 
+
+class DocumentChunk(Base):
+    __tablename__ = "document_chunks"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    organisation_id: Mapped[int] = mapped_column(
+        ForeignKey("organisations.id"),
+        nullable=False,
+        index=True,
+    )
+
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("documents.id"),
+        nullable=False,
+        index=True,
+    )
+
+    chunk_index: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
+
+    content: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+    )
+
+    content_hash: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+
+    embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(),
+        nullable=True,
+    )
+
+    chunk_metadata: Mapped[dict | None] = mapped_column(
+        "metadata",
+        JSON,
+        nullable=True,
+    )
 
 class Province(Base):
     __tablename__ = "provinces"
