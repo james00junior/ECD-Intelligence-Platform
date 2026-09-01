@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from sqlalchemy import text
@@ -24,15 +23,11 @@ def validate_sql(query: str) -> None:
     """
     Validate a SQL query before execution.
 
-    Phase 1 policy:
+    Phase 2 policy:
     - Query must not be empty.
     - Only SELECT statements are allowed.
     - Multiple SQL statements are rejected.
     - Common write/DDL operations are rejected.
-
-    This is intentionally a basic safety layer.
-    A proper SQL parser and database-level read-only
-    permissions will be added in later phases.
     """
 
     if not query or not query.strip():
@@ -40,26 +35,23 @@ def validate_sql(query: str) -> None:
 
     normalized_query = query.strip().upper()
 
-    # Only SELECT queries are permitted.
     if not normalized_query.startswith("SELECT"):
         raise ValueError(
             "Only SELECT statements are allowed."
         )
 
-    # Reject multiple SQL statements.
     if ";" in normalized_query.rstrip(";"):
         raise ValueError(
             "Multiple SQL statements are not allowed."
         )
 
-    # Basic protection against write/DDL operations.
-    tokens = normalized_query.replace(
-        "(", " "
-    ).replace(
-        ")", " "
-    ).replace(
-        ",", " "
-    ).split()
+    tokens = (
+        normalized_query
+        .replace("(", " ")
+        .replace(")", " ")
+        .replace(",", " ")
+        .split()
+    )
 
     for keyword in FORBIDDEN_KEYWORDS:
         if keyword in tokens:
@@ -68,21 +60,24 @@ def validate_sql(query: str) -> None:
             )
 
 
-def execute_sql(query: str) -> list[dict[str, Any]]:
+def execute_sql(
+    query: str,
+    parameters: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     """
     Execute a validated read-only SQL query.
 
-    Returns:
-        A list of dictionaries where each dictionary represents
-        one database row.
+    Parameters are passed separately from the SQL text so that
+    organisation identifiers and future user-supplied values are
+    parameterised rather than interpolated into SQL.
     """
 
     validate_sql(query)
 
     with engine.connect() as connection:
-
         result: Result = connection.execute(
-            text(query)
+            text(query),
+            parameters or {},
         )
 
         columns = result.keys()

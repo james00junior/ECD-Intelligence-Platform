@@ -15,6 +15,7 @@ class AgentRequest(BaseModel):
 
     organisation_id: int | None = Field(
         default=None,
+        ge=1,
         description="Optional organisation scope.",
     )
 

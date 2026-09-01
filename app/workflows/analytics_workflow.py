@@ -1,27 +1,13 @@
 """
-Analytics workflow for the ECD intelligence platform.
+Analytics workflow for the ECD Intelligence Platform.
 
 Responsibilities:
 
 1. Route the question.
-2. Build an analytics query plan (LLM or rules).
-3. Execute the plan via the analytics agent.
+2. Build an analytics query plan.
+3. Execute the plan through the analytics agent.
 4. Generate a human-readable response.
-5. Return a stable workflow state.
-
-Architecture:
-
-    Question
-        ↓
-    Router
-        ↓
-    Query Planner
-        ↓
-    Analytics Agent  (uses planned intent)
-        ↓
-    Response Generator
-        ↓
-    Final Answer
+5. Preserve organisation scope throughout the workflow.
 """
 
 from __future__ import annotations
@@ -36,20 +22,19 @@ from app.services.query_planner import create_query_plan
 from app.workflows.router import route_question
 
 
-# -------------------------------------------------------------------
-# WORKFLOW STATE
-# -------------------------------------------------------------------
-
 class AnalyticsWorkflowState(TypedDict, total=False):
-    """State passed between workflow nodes."""
 
     question: str
+
+    organisation_id: int | None
 
     route: str
 
     intent: str | None
 
     sql_query: str | None
+
+    query: str | None
 
     results: list[dict[str, Any]]
 
@@ -58,14 +43,9 @@ class AnalyticsWorkflowState(TypedDict, total=False):
     error: str | None
 
 
-# -------------------------------------------------------------------
-# ROUTER NODE
-# -------------------------------------------------------------------
-
 def router_node(
     state: AnalyticsWorkflowState,
 ) -> dict[str, Any]:
-    """Determine which route should handle the question."""
 
     question = state.get("question", "")
 
@@ -76,14 +56,9 @@ def router_node(
     }
 
 
-# -------------------------------------------------------------------
-# ROUTER DECISION
-# -------------------------------------------------------------------
-
 def route_from_router(
     state: AnalyticsWorkflowState,
 ) -> str:
-    """Choose the next workflow node."""
 
     route = state.get("route")
 
@@ -93,14 +68,9 @@ def route_from_router(
     return "unknown"
 
 
-# -------------------------------------------------------------------
-# QUERY PLANNER NODE
-# -------------------------------------------------------------------
-
 def query_planner_node(
     state: AnalyticsWorkflowState,
 ) -> dict[str, Any]:
-    """Create a structured analytics query plan."""
 
     question = state.get("question", "")
 
@@ -124,7 +94,6 @@ def query_planner_node(
 def route_after_query_planner(
     state: AnalyticsWorkflowState,
 ) -> str:
-    """Skip execution when planning failed."""
 
     if state.get("error") or state.get("intent") is None:
         return "response"
@@ -132,42 +101,34 @@ def route_after_query_planner(
     return "analytics"
 
 
-# -------------------------------------------------------------------
-# ANALYTICS NODE
-# -------------------------------------------------------------------
-
 def analytics_node(
     state: AnalyticsWorkflowState,
 ) -> dict[str, Any]:
-    """Execute the analytics agent using the planned intent."""
 
     question = state.get("question", "")
     intent = state.get("intent")
+    organisation_id = state.get("organisation_id")
 
     result = analytics_agent.invoke(
         {
             "question": question,
             "intent": intent,
+            "organisation_id": organisation_id,
         }
     )
 
     return {
         "intent": result.get("intent"),
         "sql_query": result.get("sql_query"),
-        "query": result.get("sql_query"),
+        "query": result.get("query"),
         "results": result.get("results", []),
         "error": result.get("error"),
     }
 
 
-# -------------------------------------------------------------------
-# RESPONSE NODE
-# -------------------------------------------------------------------
-
 def response_node(
     state: AnalyticsWorkflowState,
 ) -> dict[str, Any]:
-    """Convert structured analytics results into an answer."""
 
     error = state.get("error")
 
@@ -186,14 +147,9 @@ def response_node(
     }
 
 
-# -------------------------------------------------------------------
-# UNKNOWN NODE
-# -------------------------------------------------------------------
-
 def unknown_node(
     state: AnalyticsWorkflowState,
 ) -> dict[str, Any]:
-    """Handle questions that are outside the analytics domain."""
 
     return {
         "error": (
@@ -202,25 +158,17 @@ def unknown_node(
         ),
         "intent": None,
         "sql_query": None,
+        "query": None,
         "results": [],
         "answer": None,
     }
 
 
-# -------------------------------------------------------------------
-# WORKFLOW BUILDER
-# -------------------------------------------------------------------
-
 def build_analytics_workflow():
-    """Build and compile the analytics workflow."""
 
     workflow = StateGraph(
         AnalyticsWorkflowState
     )
-
-    # ---------------------------------------------------------------
-    # Nodes
-    # ---------------------------------------------------------------
 
     workflow.add_node(
         "router",
@@ -247,17 +195,9 @@ def build_analytics_workflow():
         unknown_node,
     )
 
-    # ---------------------------------------------------------------
-    # Entry point
-    # ---------------------------------------------------------------
-
     workflow.set_entry_point(
         "router"
     )
-
-    # ---------------------------------------------------------------
-    # Router
-    # ---------------------------------------------------------------
 
     workflow.add_conditional_edges(
         "router",
@@ -267,10 +207,6 @@ def build_analytics_workflow():
             "unknown": "unknown",
         },
     )
-
-    # ---------------------------------------------------------------
-    # Analytics pipeline
-    # ---------------------------------------------------------------
 
     workflow.add_conditional_edges(
         "query_planner",
@@ -291,10 +227,6 @@ def build_analytics_workflow():
         END,
     )
 
-    # ---------------------------------------------------------------
-    # Unknown route
-    # ---------------------------------------------------------------
-
     workflow.add_edge(
         "unknown",
         END,
@@ -302,10 +234,6 @@ def build_analytics_workflow():
 
     return workflow.compile()
 
-
-# -------------------------------------------------------------------
-# PUBLIC WORKFLOW
-# -------------------------------------------------------------------
 
 analytics_workflow = build_analytics_workflow()
 

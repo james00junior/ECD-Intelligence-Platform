@@ -1,13 +1,14 @@
 """
-Analytics agent for the ECD intelligence platform.
+Analytics agent for the ECD Intelligence Platform.
 
-Phase 2 responsibilities:
+Responsibilities:
 
 1. Classify analytics questions.
 2. Generate safe SELECT queries.
-3. Execute queries against PostgreSQL.
-4. Return a stable structured response.
-5. Expose a LangGraph runnable named `analytics_agent`.
+3. Apply organisation-level data scoping.
+4. Execute queries against PostgreSQL.
+5. Return a stable structured response.
+6. Expose a LangGraph runnable named `analytics_agent`.
 """
 
 from __future__ import annotations
@@ -16,10 +17,9 @@ from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from app.tools.sql_tool import execute_sql
-
 from app.services.intent_classifier import classify_intent
 from app.services.query_planner import build_query_plan
+from app.tools.sql_tool import execute_sql
 
 
 # -------------------------------------------------------------------
@@ -32,10 +32,19 @@ class AnalyticsState(TypedDict, total=False):
     """
 
     question: str
+
+    organisation_id: int | None
+
     sql_query: str | None
+
+    sql_parameters: dict[str, Any]
+
     results: list[dict[str, Any]]
+
     answer: str | None
+
     error: str | None
+
     intent: str | None
 
 
@@ -43,10 +52,26 @@ class AnalyticsState(TypedDict, total=False):
 # SQL GENERATION
 # -------------------------------------------------------------------
 
-def generate_sql(intent: str) -> str | None:
+def generate_sql(
+    intent: str,
+    organisation_id: int | None = None,
+) -> str | None:
     """
-    Generate a read-only PostgreSQL query for an analytics intent.
+    Generate a read-only PostgreSQL query.
+
+    When organisation_id is supplied, all organisation-owned
+    operational queries are explicitly scoped to that organisation.
+
+    The identifier is passed as a SQL parameter rather than being
+    interpolated into the SQL string.
     """
+
+    organisation_filter = ""
+
+    if organisation_id is not None:
+        organisation_filter = (
+            "\nWHERE organisation_id = :organisation_id"
+        )
 
     # ---------------------------------------------------------------
     # TOTAL FRANCHISEES
@@ -54,10 +79,11 @@ def generate_sql(intent: str) -> str | None:
 
     if intent == "count_franchisees":
 
-        return """
+        return f"""
 SELECT
     COUNT(*) AS franchisee_count
 FROM franchisees
+{organisation_filter}
 """.strip()
 
     # ---------------------------------------------------------------
@@ -65,6 +91,15 @@ FROM franchisees
     # ---------------------------------------------------------------
 
     if intent == "active_franchisees":
+
+        if organisation_id is not None:
+            return """
+SELECT
+    COUNT(*) AS active_franchisee_count
+FROM franchisees
+WHERE organisation_id = :organisation_id
+  AND status = 'ACTIVE'
+""".strip()
 
         return """
 SELECT
@@ -79,6 +114,15 @@ WHERE status = 'ACTIVE'
 
     if intent == "count_children":
 
+        if organisation_id is not None:
+            return """
+SELECT
+    COUNT(*) AS child_count
+FROM children
+WHERE organisation_id = :organisation_id
+  AND status = 'ENROLLED'
+""".strip()
+
         return """
 SELECT
     COUNT(*) AS child_count
@@ -91,6 +135,17 @@ WHERE status = 'ENROLLED'
     # ---------------------------------------------------------------
 
     if intent == "franchisees_by_status":
+
+        if organisation_id is not None:
+            return """
+SELECT
+    status,
+    COUNT(*) AS franchisee_count
+FROM franchisees
+WHERE organisation_id = :organisation_id
+GROUP BY status
+ORDER BY status
+""".strip()
 
         return """
 SELECT
@@ -107,7 +162,14 @@ ORDER BY status
 
     if intent == "franchisees_by_province":
 
-        return """
+        organisation_condition = ""
+
+        if organisation_id is not None:
+            organisation_condition = """
+WHERE f.organisation_id = :organisation_id
+""".strip()
+
+        return f"""
 SELECT
     p.name AS province,
     COUNT(f.id) AS franchisee_count
@@ -124,6 +186,7 @@ JOIN municipalities m
     ON m.id = lm.municipality_id
 JOIN provinces p
     ON p.id = m.province_id
+{organisation_condition}
 GROUP BY
     p.id,
     p.name
@@ -137,7 +200,14 @@ ORDER BY
 
     if intent == "franchisees_by_main_place":
 
-        return """
+        organisation_condition = ""
+
+        if organisation_id is not None:
+            organisation_condition = """
+WHERE f.organisation_id = :organisation_id
+""".strip()
+
+        return f"""
 SELECT
     mp.name AS main_place,
     COUNT(f.id) AS franchisee_count
@@ -148,6 +218,7 @@ JOIN sub_places sp
     ON sp.id = sa.sub_place_id
 JOIN main_places mp
     ON mp.id = sp.main_place_id
+{organisation_condition}
 GROUP BY
     mp.id,
     mp.name
@@ -157,20 +228,18 @@ ORDER BY
 
     # ---------------------------------------------------------------
     # CHILDREN BY PROVINCE
-    #
-    # IMPORTANT:
-    #
-    # Children are grouped according to residential geography.
-    # This uses:
-    #
-    #     children.residential_small_area_id
-    #
-    # NOT the franchisee operating location.
     # ---------------------------------------------------------------
 
     if intent == "children_by_province":
 
-        return """
+        organisation_condition = ""
+
+        if organisation_id is not None:
+            organisation_condition = """
+  AND c.organisation_id = :organisation_id
+""".rstrip()
+
+        return f"""
 SELECT
     p.name AS province,
     COUNT(c.id) AS child_count
@@ -188,6 +257,7 @@ JOIN municipalities m
 JOIN provinces p
     ON p.id = m.province_id
 WHERE c.status = 'ENROLLED'
+{organisation_condition}
 GROUP BY
     p.id,
     p.name
@@ -197,9 +267,6 @@ ORDER BY
 
     # ---------------------------------------------------------------
     # POPULATION BY PROVINCE
-    #
-    # Alias population_total as `population` because this is the
-    # stable result contract expected by the analytics API/tests.
     # ---------------------------------------------------------------
 
     if intent == "population_by_province":
@@ -240,9 +307,6 @@ def classify_node(
 ) -> AnalyticsState:
     """
     Resolve analytics intent.
-
-    Uses a pre-planned intent from the query planner when present,
-    otherwise classifies from the question text.
     """
 
     question = state.get("question", "")
@@ -256,6 +320,7 @@ def classify_node(
             **state,
             "intent": None,
             "sql_query": None,
+            "sql_parameters": {},
             "error": (
                 "No SQL query could be generated "
                 "for this question."
@@ -280,32 +345,43 @@ def generate_sql_node(
     intent = state.get("intent")
 
     if intent is None:
-
         return {
             **state,
             "sql_query": None,
+            "sql_parameters": {},
             "error": (
                 "No SQL query could be generated "
                 "for this question."
             ),
         }
 
-    query = generate_sql(intent)
+    organisation_id = state.get("organisation_id")
+
+    query = generate_sql(
+        intent=intent,
+        organisation_id=organisation_id,
+    )
 
     if query is None:
-
         return {
             **state,
             "sql_query": None,
+            "sql_parameters": {},
             "error": (
                 "No SQL query could be generated "
                 "for this question."
             ),
         }
+
+    parameters: dict[str, Any] = {}
+
+    if organisation_id is not None:
+        parameters["organisation_id"] = organisation_id
 
     return {
         **state,
         "sql_query": query,
+        "sql_parameters": parameters,
         "error": None,
     }
 
@@ -320,15 +396,16 @@ def execute_sql_node(
     query = state.get("sql_query")
 
     if not query:
-
         return {
             **state,
             "results": [],
         }
 
     try:
-
-        results = execute_sql(query)
+        results = execute_sql(
+            query,
+            state.get("sql_parameters", {}),
+        )
 
         return {
             **state,
@@ -337,7 +414,6 @@ def execute_sql_node(
         }
 
     except Exception as exc:
-
         return {
             **state,
             "results": [],
@@ -352,10 +428,6 @@ def execute_sql_node(
 def route_after_classification(
     state: AnalyticsState,
 ) -> str:
-    """
-    Decide whether the workflow should generate SQL or terminate.
-    """
-
     if state.get("intent") is None:
         return "end"
 
@@ -365,10 +437,6 @@ def route_after_classification(
 def route_after_sql_generation(
     state: AnalyticsState,
 ) -> str:
-    """
-    Decide whether the generated SQL should be executed.
-    """
-
     if state.get("sql_query") is None:
         return "end"
 
@@ -386,7 +454,6 @@ def build_analytics_graph():
 
     graph = StateGraph(AnalyticsState)
 
-    # Nodes
     graph.add_node(
         "classify",
         classify_node,
@@ -402,13 +469,11 @@ def build_analytics_graph():
         execute_sql_node,
     )
 
-    # Entry point
     graph.add_edge(
         START,
         "classify",
     )
 
-    # Classification routing
     graph.add_conditional_edges(
         "classify",
         route_after_classification,
@@ -418,7 +483,6 @@ def build_analytics_graph():
         },
     )
 
-    # SQL generation routing
     graph.add_conditional_edges(
         "generate_sql",
         route_after_sql_generation,
@@ -428,7 +492,6 @@ def build_analytics_graph():
         },
     )
 
-    # Execution terminates the workflow
     graph.add_edge(
         "execute_sql",
         END,
@@ -436,10 +499,6 @@ def build_analytics_graph():
 
     return graph.compile()
 
-
-# -------------------------------------------------------------------
-# PUBLIC ANALYTICS AGENT
-# -------------------------------------------------------------------
 
 analytics_agent = build_analytics_graph()
 
@@ -452,9 +511,11 @@ def _error(
     message: str,
     intent: str | None = None,
 ) -> dict[str, Any]:
+
     return {
         "intent": intent,
         "query": None,
+        "sql_query": None,
         "results": [],
         "error": message,
     }
@@ -465,9 +526,11 @@ def _success(
     query: str,
     results: list[dict[str, Any]],
 ) -> dict[str, Any]:
+
     return {
         "intent": intent,
         "query": query,
+        "sql_query": query,
         "results": results,
         "error": None,
     }
@@ -477,53 +540,51 @@ def _success(
 # CONVENIENCE FUNCTION
 # -------------------------------------------------------------------
 
-def run_agent(question: str) -> dict[str, Any]:
+def run_agent(
+    question: str,
+    organisation_id: int | None = None,
+) -> dict[str, Any]:
     """
     Execute the analytics pipeline.
-
-    Flow:
-
-        Natural language question
-                    ↓
-              Query Planner
-                    ↓
-                Intent
-                    ↓
-              SQL Generator
-                    ↓
-                SQL Tool
-                    ↓
-             Structured result
     """
 
     if not isinstance(question, str):
         return _error(
             "Question must be a string."
         )
-    
-
 
     plan = build_query_plan(question)
 
     if plan is None:
         return _error(
-            "No SQL query could be generated for this question."
+            "No SQL query could be generated "
+            "for this question."
         )
-    
-
 
     intent = plan.intent
 
-    query = generate_sql(intent)
+    query = generate_sql(
+        intent=intent,
+        organisation_id=organisation_id,
+    )
 
     if query is None:
         return _error(
-            "No SQL query could be generated for this question.",
+            "No SQL query could be generated "
+            "for this question.",
             intent=intent,
         )
 
+    parameters: dict[str, Any] = {}
+
+    if organisation_id is not None:
+        parameters["organisation_id"] = organisation_id
+
     try:
-        results = execute_sql(query)
+        results = execute_sql(
+            query,
+            parameters,
+        )
 
     except Exception as exc:
         return _error(
@@ -538,10 +599,6 @@ def run_agent(question: str) -> dict[str, Any]:
     )
 
 
-# -------------------------------------------------------------------
-# EXPORTS
-# -------------------------------------------------------------------
-
 __all__ = [
     "AnalyticsState",
     "analytics_agent",
@@ -550,5 +607,3 @@ __all__ = [
     "generate_sql",
     "run_agent",
 ]
-
-
