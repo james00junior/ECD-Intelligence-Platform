@@ -15,6 +15,11 @@ from langgraph.graph import END, StateGraph
 from app.database.database import SessionLocal
 from app.services.evidence_aggregation import aggregate_evidence
 from app.services.grounded_synthesis import synthesize_grounded_answer
+from app.services.research_loop import (
+    DEFAULT_MAX_RESEARCH_STEPS,
+    evaluate_evidence_sufficiency,
+    refine_research_query,
+)
 from app.services.research_router import (
     ResearchRoute,
     route_research_question,
@@ -73,6 +78,11 @@ class ResearchState(TypedDict, total=False):
     answer: str | None
     error: str | None
     research_steps: int
+    research_attempts: int
+    max_research_steps: int
+    research_query: str
+    retry_requested: bool
+    sufficiency_reason: str | None
 
 
 def initial_routing_node(
@@ -87,6 +97,10 @@ def initial_routing_node(
         "source_requirements": source_requirements_for_route(route),
         "evidence": state.get("evidence", []),
         "research_steps": state.get("research_steps", 0),
+        "research_attempts": state.get("research_attempts", 0),
+        "max_research_steps": state.get("max_research_steps", DEFAULT_MAX_RESEARCH_STEPS),
+        "research_query": state.get("research_query", state.get("question", "")),
+        "retry_requested": False,
         "error": None,
     }
 
@@ -126,7 +140,7 @@ def sql_research_node(state: ResearchState) -> dict[str, Any]:
     """Collect SQL evidence through the existing read-only analytics path."""
 
     result = run_sql_research(
-        question=state.get("question", ""),
+        question=state.get("research_query", state.get("question", "")),
         organisation_id=state.get("organisation_id"),
     )
     return {
@@ -149,7 +163,7 @@ def internal_knowledge_node(state: ResearchState) -> dict[str, Any]:
     db = SessionLocal()
     try:
         evidence = search_internal_knowledge(
-            question=state.get("question", ""),
+            question=state.get("research_query", state.get("question", "")),
             organisation_id=organisation_id,
             db=db,
         )
@@ -171,7 +185,9 @@ def internal_knowledge_node(state: ResearchState) -> dict[str, Any]:
 def external_research_node(state: ResearchState) -> dict[str, Any]:
     """Collect public evidence without passing organisation data to the web."""
 
-    result = search_external_research(state.get("question", ""))
+    result = search_external_research(
+        state.get("research_query", state.get("question", ""))
+    )
     return {
         "evidence": state.get("evidence", []) + result["evidence"],
         "error": state.get("error") or result["error"],
@@ -187,6 +203,45 @@ def aggregate_evidence_node(state: ResearchState) -> dict[str, Any]:
         organisation_id=state.get("organisation_id"),
     )
     return result
+
+
+def research_loop_node(state: ResearchState) -> dict[str, Any]:
+    """Evaluate evidence and prepare one bounded, refined follow-up pass."""
+
+    decision = evaluate_evidence_sufficiency(
+        evidence=state.get("selected_evidence", []),
+        conflicts=state.get("conflicts", []),
+        error=state.get("error"),
+        research_steps=state.get("research_steps", 0),
+        max_research_steps=state.get("max_research_steps", DEFAULT_MAX_RESEARCH_STEPS),
+        has_retrieval_source=bool(state.get("source_requirements", [])),
+    )
+    if not decision["should_retry"]:
+        return {
+            "retry_requested": False,
+            "sufficiency_reason": decision["reason"],
+            "error": state.get("error") or (
+                None if decision["sufficient"] else decision["reason"]
+            ),
+        }
+
+    attempts = state.get("research_attempts", 0) + 1
+    return {
+        "retry_requested": True,
+        "research_attempts": attempts,
+        "research_query": refine_research_query(
+            state.get("question", ""), attempts
+        ),
+        "sufficiency_reason": decision["reason"],
+    }
+
+
+def route_after_research_loop(state: ResearchState) -> str:
+    """Continue a bounded retry or synthesize the final evidence state."""
+
+    if not state.get("retry_requested"):
+        return "synthesis"
+    return route_after_initial_routing(state)
 
 
 def synthesis_node(state: ResearchState) -> dict[str, Any]:
@@ -221,7 +276,7 @@ def build_research_workflow():
     """Build a cleanly terminating Research Agent workflow.
 
     SQL, internal-document, and external research nodes feed a tenant-safe
-    aggregation step before deterministic grounded synthesis.
+    aggregation step and a bounded retry decision before grounded synthesis.
     """
 
     workflow = StateGraph(ResearchState)
@@ -231,6 +286,7 @@ def build_research_workflow():
     workflow.add_node("internal_knowledge", internal_knowledge_node)
     workflow.add_node("external_research", external_research_node)
     workflow.add_node("aggregate_evidence", aggregate_evidence_node)
+    workflow.add_node("research_loop", research_loop_node)
     workflow.add_node("synthesis", synthesis_node)
     workflow.add_node("terminal_answer", terminal_answer_node)
 
@@ -263,7 +319,18 @@ def build_research_workflow():
         },
     )
     workflow.add_edge("external_research", "aggregate_evidence")
-    workflow.add_edge("aggregate_evidence", "synthesis")
+    workflow.add_edge("aggregate_evidence", "research_loop")
+    workflow.add_conditional_edges(
+        "research_loop",
+        route_after_research_loop,
+        {
+            "sql_research": "sql_research",
+            "internal_knowledge": "internal_knowledge",
+            "external_research": "external_research",
+            "aggregate_evidence": "aggregate_evidence",
+            "synthesis": "synthesis",
+        },
+    )
     workflow.add_edge("synthesis", "terminal_answer")
     workflow.add_edge("terminal_answer", END)
 
@@ -287,6 +354,8 @@ __all__ = [
     "route_after_initial_routing",
     "route_after_sql_research",
     "route_after_internal_knowledge",
+    "route_after_research_loop",
+    "research_loop_node",
     "synthesis_node",
     "sql_research_node",
     "terminal_answer_node",

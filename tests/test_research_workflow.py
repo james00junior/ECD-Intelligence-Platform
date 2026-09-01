@@ -47,7 +47,7 @@ def test_research_workflow_terminates_for_direct_question():
     assert result["evidence"] == []
     assert result["research_steps"] == 0
     assert result["answer"] is None
-    assert result["error"] == "Insufficient evidence to answer the question."
+    assert result["error"] == "No research source was selected for this question."
 
 
 def test_research_workflow_preserves_organisation_scope(monkeypatch):
@@ -67,8 +67,26 @@ def test_research_workflow_preserves_organisation_scope(monkeypatch):
 
 
 def test_research_workflow_collects_sql_and_document_evidence(monkeypatch):
-    sql_evidence = {"evidence_id": "sql:count_franchisees"}
-    document_evidence = {"evidence_id": "document-chunk:1"}
+    sql_evidence = {
+        "evidence_id": "sql:count_franchisees",
+        "content": "[{\"franchisee_count\": 4}]",
+        "provenance": {
+            "source_type": "sql", "source_id": "sql:count_franchisees",
+            "title": "Database", "uri": None, "organisation_id": 1,
+            "metadata": {},
+        },
+        "score": None, "metadata": {},
+    }
+    document_evidence = {
+        "evidence_id": "document-chunk:1",
+        "content": "Coaching supports quality.",
+        "provenance": {
+            "source_type": "internal_document", "source_id": "document:1",
+            "title": "Report", "uri": "document://report", "organisation_id": 1,
+            "metadata": {},
+        },
+        "score": 0.9, "metadata": {},
+    }
 
     monkeypatch.setattr(
         "app.workflows.research_workflow.run_sql_research",
@@ -119,3 +137,40 @@ def test_research_workflow_collects_external_evidence(monkeypatch):
     assert result["route"] == "external"
     assert result["selected_evidence"] == [external_evidence]
     assert result["citations"][0]["source_kind"] == "external"
+
+
+def test_research_workflow_retries_with_refined_query(monkeypatch):
+    calls = []
+    evidence = {
+        "evidence_id": "document-chunk:1",
+        "content": "Coaching improves quality.",
+        "provenance": {
+            "source_type": "internal_document",
+            "source_id": "document:1",
+            "title": "Programme guide",
+            "uri": "document://guide",
+            "organisation_id": 1,
+            "metadata": {},
+        },
+        "score": 0.9,
+        "metadata": {},
+    }
+
+    def retrieve(**kwargs):
+        calls.append(kwargs["question"])
+        return [] if len(calls) == 1 else [evidence]
+
+    monkeypatch.setattr(
+        "app.workflows.research_workflow.search_internal_knowledge", retrieve
+    )
+    result = research_workflow.invoke({
+        "question": "What does our programme guide say?",
+        "organisation_id": 1,
+        "max_research_steps": 2,
+    })
+
+    assert len(calls) == 2
+    assert calls[1].endswith("supporting evidence.")
+    assert result["research_attempts"] == 1
+    assert result["research_steps"] == 2
+    assert result["answer"] is not None

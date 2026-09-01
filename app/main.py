@@ -1,4 +1,8 @@
+from pathlib import Path
+
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.schemas import AgentRequest
 from app.api.schemas import AgentResponse
@@ -24,6 +28,14 @@ app = FastAPI(
 app.include_router(
     api_router,
 )
+
+static_directory = Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=static_directory), name="static")
+
+
+@app.get("/", include_in_schema=False)
+def chat_interface() -> FileResponse:
+    return FileResponse(static_directory / "index.html")
 
 
 # -------------------------------------------------------------------

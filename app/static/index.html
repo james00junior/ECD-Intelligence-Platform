@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ECD Intelligence</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="/"><span class="brand-mark">✦</span> ECD Intelligence</a>
+        <div class="status"><span></span> Research agent online</div>
+        <section><p class="label">ORGANISATION</p><label class="org-input"><span>#</span><input id="organisation-id" type="number" min="1" value="1" aria-label="Organisation ID"></label></section>
+        <section><p class="label">START A RESEARCH THREAD</p><button class="suggestion" data-question="How many franchisees are there?">Franchisee overview</button><button class="suggestion" data-question="What does our programme guide say about quality?">Programme quality</button><button class="suggestion" data-question="Find public research on ECD quality.">External ECD research</button></section>
+        <p class="sidebar-footer">Grounded answers with source citations.</p>
+      </aside>
+      <section class="chat-panel">
+        <header><div><p class="eyebrow">RESEARCH WORKSPACE</p><h1>What would you like to know?</h1></div><div class="secure">● Tenant scoped</div></header>
+        <div id="messages" class="messages" aria-live="polite"><article class="message assistant"><div class="avatar">✦</div><div class="bubble"><p>I can research your organisation’s data, internal knowledge, and approved external sources. Ask a question to begin.</p></div></article></div>
+        <form id="chat-form" class="composer"><textarea id="question" rows="1" placeholder="Ask about your organisation…" aria-label="Research question"></textarea><button type="submit" aria-label="Send question">↑</button></form>
+        <p class="hint">Answers are generated only from retrieved evidence.</p>
+      </section>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
