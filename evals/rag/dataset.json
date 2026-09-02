@@ -1,0 +1,56 @@
+[
+  {
+    "id": "rag-001",
+    "question": "What is the SmartStart model?",
+    "organisation_id": 1,
+    "expected_source_uris": [
+      "https://smartstart.org.za/model/",
+      "https://smartstart.org.za/our-model/"
+    ],
+    "category": "model",
+    "difficulty": "easy"
+  },
+  {
+    "id": "rag-002",
+    "question": "What is SmartStart's impact?",
+    "organisation_id": 1,
+    "expected_source_uris": [
+      "https://smartstart.org.za/impact/",
+      "https://smartstart.org.za/our-impact/"
+    ],
+    "category": "impact",
+    "difficulty": "easy"
+  },
+  {
+    "id": "rag-003",
+    "question": "What is the SmartStart programme?",
+    "organisation_id": 1,
+    "expected_source_uris": [
+      "https://smartstart.org.za/programme/",
+      "https://smartstart.org.za/our-programme/"
+    ],
+    "category": "programme",
+    "difficulty": "easy"
+  },
+  {
+    "id": "rag-004",
+    "question": "Tell me about SmartStart and its organisation.",
+    "organisation_id": 1,
+    "expected_source_uris": [
+      "https://smartstart.org.za/about-us/"
+    ],
+    "category": "organisation",
+    "difficulty": "easy"
+  },
+  {
+    "id": "rag-005",
+    "question": "How can I contact SmartStart?",
+    "organisation_id": 1,
+    "expected_source_uris": [
+      "https://smartstart.org.za/contact/",
+      "https://smartstart.org.za/contact-us/"
+    ],
+    "category": "contact",
+    "difficulty": "easy"
+  }
+]
