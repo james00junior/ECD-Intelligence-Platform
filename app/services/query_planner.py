@@ -7,12 +7,6 @@ Responsibilities
 2. Produce a structured AnalyticsPlan.
 3. Keep planning separate from SQL execution.
 4. Provide stable helper functions for workflow integration.
-
-Phase 3:
-    When ``QUERY_PLANNER_MODE=llm``, the planner tries the LLM first and
-    falls back to deterministic rules if the LLM is unavailable or unsure.
-
-The planner does NOT execute SQL.
 """
 
 from __future__ import annotations
@@ -45,6 +39,11 @@ INTENT_METADATA: dict[str, dict[str, str | None]] = {
         "measure": "count",
         "dimension": "enrolled",
     },
+    "franchisees_in_province": {
+        "entity": "franchisees",
+        "measure": "count",
+        "dimension": "province",
+    },
     "franchisees_by_status": {
         "entity": "franchisees",
         "measure": "count",
@@ -72,8 +71,13 @@ INTENT_METADATA: dict[str, dict[str, str | None]] = {
     },
 }
 
+
 VALID_INTENTS = frozenset(INTENT_METADATA)
 
+
+# ---------------------------------------------------------------------------
+# PLAN CREATION
+# ---------------------------------------------------------------------------
 
 def plan_from_intent(intent: str) -> AnalyticsPlan:
     metadata = INTENT_METADATA[intent]
@@ -86,15 +90,11 @@ def plan_from_intent(intent: str) -> AnalyticsPlan:
     )
 
 
-# ---------------------------------------------------------------------------
-# RULE-BASED QUERY PLAN CREATION
-# ---------------------------------------------------------------------------
-
-def build_rule_query_plan(question: str) -> AnalyticsPlan | None:
+def build_rule_query_plan(
+    question: str,
+) -> AnalyticsPlan | None:
     """
     Create an AnalyticsPlan using deterministic intent classification.
-
-    Returns None when the question cannot be classified.
     """
 
     if not isinstance(question, str):
@@ -113,17 +113,13 @@ def build_rule_query_plan(question: str) -> AnalyticsPlan | None:
     return plan_from_intent(intent)
 
 
-# ---------------------------------------------------------------------------
-# QUERY PLAN CREATION
-# ---------------------------------------------------------------------------
-
-def build_query_plan(question: str) -> AnalyticsPlan | None:
+def build_query_plan(
+    question: str,
+) -> AnalyticsPlan | None:
     """
     Create an AnalyticsPlan from a natural-language question.
 
-    Uses the configured planner mode:
-        - rule: deterministic keyword/intent matching
-        - llm: structured LLM planning with rule-based fallback
+    Uses the configured planner mode.
     """
 
     if not isinstance(question, str):
@@ -137,7 +133,9 @@ def build_query_plan(question: str) -> AnalyticsPlan | None:
     settings = get_settings()
 
     if settings.query_planner_mode == "llm":
-        from app.services.llm_query_planner import build_llm_query_plan
+        from app.services.llm_query_planner import (
+            build_llm_query_plan,
+        )
 
         plan = build_llm_query_plan(question)
 
@@ -147,18 +145,22 @@ def build_query_plan(question: str) -> AnalyticsPlan | None:
     return build_rule_query_plan(question)
 
 
-def create_query_plan(question: str) -> AnalyticsPlan | None:
+def create_query_plan(
+    question: str,
+) -> AnalyticsPlan | None:
     """
-    Create an AnalyticsPlan from a natural-language question.
-
-    Alias used by workflow code. See build_query_plan().
+    Public query-plan creation entry point.
     """
 
     return build_query_plan(question)
 
 
-def plan_query(question: str) -> AnalyticsPlan | None:
-    """Backward-compatible alias for create_query_plan()."""
+def plan_query(
+    question: str,
+) -> AnalyticsPlan | None:
+    """
+    Backward-compatible alias.
+    """
 
     return create_query_plan(question)
 
@@ -167,8 +169,12 @@ def plan_query(question: str) -> AnalyticsPlan | None:
 # SERIALIZATION
 # ---------------------------------------------------------------------------
 
-def plan_to_dict(plan: AnalyticsPlan | None) -> dict[str, Any] | None:
-    """Convert an AnalyticsPlan into a plain dictionary."""
+def plan_to_dict(
+    plan: AnalyticsPlan | None,
+) -> dict[str, Any] | None:
+    """
+    Convert an AnalyticsPlan into a plain dictionary.
+    """
 
     if plan is None:
         return None
@@ -179,16 +185,14 @@ def plan_to_dict(plan: AnalyticsPlan | None) -> dict[str, Any] | None:
 def create_query_plan_dict(
     question: str,
 ) -> dict[str, Any] | None:
-    """Create a query plan and immediately serialize it to a dictionary."""
+    """
+    Create and serialize an AnalyticsPlan.
+    """
 
     plan = create_query_plan(question)
 
     return plan_to_dict(plan)
 
-
-# ---------------------------------------------------------------------------
-# EXPORTS
-# ---------------------------------------------------------------------------
 
 __all__ = [
     "AnalyticsPlan",

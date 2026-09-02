@@ -43,3 +43,23 @@ def test_interpret_generated_sql_uses_renderer():
     )
     assert "Amina" in answer
     assert "4" in answer
+
+
+def test_known_count_franchisees_uses_natural_language_response():
+    from app.services.result_interpreter import interpret_results
+
+    answer = interpret_results(
+        question="How many franchisees?",
+        results=[
+            {
+                "franchisee_count": 60,
+            }
+        ],
+        intent="count_franchisees",
+        sql_source="generated",
+        use_llm=True,
+    )
+
+    assert answer == "There are currently 60 franchisees."
+    assert "[" not in answer
+    assert "{" not in answer

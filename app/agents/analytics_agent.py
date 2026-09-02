@@ -17,60 +17,81 @@ from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from app.services.intent_classifier import classify_intent
+from app.services.intent_classifier import (
+    PROVINCES,
+    classify_intent,
+)
 from app.services.query_planner import build_query_plan
 from app.tools.sql_tool import execute_sql
 
 
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # STATE
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 class AnalyticsState(TypedDict, total=False):
-    """
-    State passed through the analytics LangGraph workflow.
-    """
-
     question: str
-
     organisation_id: int | None
 
     sql_query: str | None
-
     sql_parameters: dict[str, Any]
 
     results: list[dict[str, Any]]
 
     answer: str | None
-
     error: str | None
 
     intent: str | None
 
     sql_source: str | None
-
     planner_latency_ms: float | None
-
     fallback_used: bool | None
 
 
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# PROVINCE EXTRACTION
+# ---------------------------------------------------------------------------
+
+def extract_province(question: str) -> str | None:
+    """
+    Extract a South African province from a natural-language question.
+    """
+
+    if not isinstance(question, str):
+        return None
+
+    normalized = question.lower().strip()
+
+    aliases = {
+        "gauteng": "Gauteng",
+        "western cape": "Western Cape",
+        "eastern cape": "Eastern Cape",
+        "kwazulu-natal": "KwaZulu-Natal",
+        "kwazulu natal": "KwaZulu-Natal",
+        "kzn": "KwaZulu-Natal",
+        "free state": "Free State",
+        "limpopo": "Limpopo",
+        "mpumalanga": "Mpumalanga",
+        "north west": "North West",
+        "northern cape": "Northern Cape",
+    }
+
+    for value in PROVINCES:
+        if value in normalized:
+            return aliases[value]
+
+    return None
+
+
+# ---------------------------------------------------------------------------
 # SQL GENERATION
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 def generate_sql(
     intent: str,
     organisation_id: int | None = None,
+    province: str | None = None,
 ) -> str | None:
-    """
-    Generate a read-only PostgreSQL query.
-
-    When organisation_id is supplied, all organisation-owned
-    operational queries are explicitly scoped to that organisation.
-
-    The identifier is passed as a SQL parameter rather than being
-    interpolated into the SQL string.
-    """
 
     organisation_filter = ""
 
@@ -134,6 +155,50 @@ SELECT
     COUNT(*) AS child_count
 FROM children
 WHERE status = 'ENROLLED'
+""".strip()
+
+    # ---------------------------------------------------------------
+    # FRANCHISEES IN SPECIFIC PROVINCE
+    # ---------------------------------------------------------------
+
+    if intent == "franchisees_in_province":
+
+        organisation_conditions = []
+
+        if organisation_id is not None:
+            organisation_conditions.append(
+                "f.organisation_id = :organisation_id"
+            )
+
+        organisation_conditions.append(
+            "LOWER(p.name) = LOWER(:province)"
+        )
+
+        where_clause = "\nWHERE " + "\n  AND ".join(
+            organisation_conditions
+        )
+
+        return f"""
+SELECT
+    p.name AS province,
+    COUNT(f.id) AS franchisee_count
+FROM franchisees f
+JOIN small_areas sa
+    ON sa.id = f.small_area_id
+JOIN sub_places sp
+    ON sp.id = sa.sub_place_id
+JOIN main_places mp
+    ON mp.id = sp.main_place_id
+JOIN local_municipalities lm
+    ON lm.id = mp.local_municipality_id
+JOIN municipalities m
+    ON m.id = lm.municipality_id
+JOIN provinces p
+    ON p.id = m.province_id
+{where_clause}
+GROUP BY
+    p.id,
+    p.name
 """.strip()
 
     # ---------------------------------------------------------------
@@ -304,16 +369,13 @@ ORDER BY
     return None
 
 
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # LANGGRAPH NODES
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 def classify_node(
     state: AnalyticsState,
 ) -> AnalyticsState:
-    """
-    Resolve analytics intent.
-    """
 
     question = state.get("question", "")
     intent = state.get("intent")
@@ -344,24 +406,28 @@ def classify_node(
 def generate_sql_node(
     state: AnalyticsState,
 ) -> AnalyticsState:
-    """
-    Generate SQL from the classified intent.
-
-    If a validated generated SELECT is already on the state (Phase 5
-    text-to-SQL), reuse it. Otherwise fall back to canned intent SQL.
-    """
 
     existing_sql = state.get("sql_query")
+
     if existing_sql:
         organisation_id = state.get("organisation_id")
-        parameters = dict(state.get("sql_parameters") or {})
-        if organisation_id is not None and ":organisation_id" in existing_sql:
+        parameters = dict(
+            state.get("sql_parameters") or {}
+        )
+
+        if (
+            organisation_id is not None
+            and ":organisation_id" in existing_sql
+        ):
             parameters["organisation_id"] = organisation_id
+
         return {
             **state,
             "sql_query": existing_sql,
             "sql_parameters": parameters,
-            "sql_source": state.get("sql_source") or "generated",
+            "sql_source": state.get(
+                "sql_source"
+            ) or "generated",
             "error": None,
         }
 
@@ -380,9 +446,28 @@ def generate_sql_node(
 
     organisation_id = state.get("organisation_id")
 
+    province = None
+
+    if intent == "franchisees_in_province":
+        province = extract_province(
+            state.get("question", "")
+        )
+
+        if province is None:
+            return {
+                **state,
+                "sql_query": None,
+                "sql_parameters": {},
+                "error": (
+                    "A province could not be identified "
+                    "in the question."
+                ),
+            }
+
     query = generate_sql(
         intent=intent,
         organisation_id=organisation_id,
+        province=province,
     )
 
     if query is None:
@@ -401,11 +486,16 @@ def generate_sql_node(
     if organisation_id is not None:
         parameters["organisation_id"] = organisation_id
 
+    if province is not None:
+        parameters["province"] = province
+
     return {
         **state,
         "sql_query": query,
         "sql_parameters": parameters,
-        "sql_source": state.get("sql_source") or "canned",
+        "sql_source": state.get(
+            "sql_source"
+        ) or "canned",
         "error": None,
     }
 
@@ -413,9 +503,6 @@ def generate_sql_node(
 def execute_sql_node(
     state: AnalyticsState,
 ) -> AnalyticsState:
-    """
-    Execute the generated read-only SQL query.
-    """
 
     query = state.get("sql_query")
 
@@ -429,12 +516,20 @@ def execute_sql_node(
         from app.tools.sql_tool import validate_sql
 
         validate_sql(query)
-        if state.get("sql_source") in {"generated", "repaired"}:
-            from app.services.sql_guard import validate_generated_sql
+
+        if state.get("sql_source") in {
+            "generated",
+            "repaired",
+        }:
+            from app.services.sql_guard import (
+                validate_generated_sql,
+            )
 
             validate_generated_sql(
                 query,
-                organisation_id=state.get("organisation_id"),
+                organisation_id=state.get(
+                    "organisation_id"
+                ),
             )
 
         results = execute_sql(
@@ -456,13 +551,14 @@ def execute_sql_node(
         }
 
 
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # ROUTING
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 def route_after_classification(
     state: AnalyticsState,
 ) -> str:
+
     if state.get("intent") is None:
         return "end"
 
@@ -472,20 +568,18 @@ def route_after_classification(
 def route_after_sql_generation(
     state: AnalyticsState,
 ) -> str:
+
     if state.get("sql_query") is None:
         return "end"
 
     return "execute_sql"
 
 
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # LANGGRAPH WORKFLOW
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 def build_analytics_graph():
-    """
-    Build and compile the analytics LangGraph workflow.
-    """
 
     graph = StateGraph(AnalyticsState)
 
@@ -538,9 +632,9 @@ def build_analytics_graph():
 analytics_agent = build_analytics_graph()
 
 
-# -------------------------------------------------------------------
-# CONVENIENCE HELPERS
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# HELPERS
+# ---------------------------------------------------------------------------
 
 def _error(
     message: str,
@@ -571,17 +665,14 @@ def _success(
     }
 
 
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # CONVENIENCE FUNCTION
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 def run_agent(
     question: str,
     organisation_id: int | None = None,
 ) -> dict[str, Any]:
-    """
-    Execute the analytics pipeline.
-    """
 
     if not isinstance(question, str):
         return _error(
@@ -592,33 +683,48 @@ def run_agent(
     from app.tools.sql_tool import validate_sql
 
     settings = get_settings()
+
     sql_source = "canned"
     planner_latency_ms = None
     fallback_used = False
+
     query = None
     parameters: dict[str, Any] = {}
     intent = None
 
     plan = build_query_plan(question)
+
     if plan is not None:
         intent = plan.intent
 
     if settings.query_planner_mode == "llm":
-        from app.services.text_to_sql import generate_select
+
+        from app.services.text_to_sql import (
+            generate_select,
+        )
 
         generated = generate_select(
             question,
             organisation_id=organisation_id,
         )
+
         if generated is not None:
+
             query = generated.sql
-            parameters = dict(generated.parameters)
+            parameters = dict(
+                generated.parameters
+            )
+
             sql_source = generated.source
-            planner_latency_ms = generated.latency_ms
+            planner_latency_ms = (
+                generated.latency_ms
+            )
+
             if intent is None:
                 intent = "generated_sql"
 
     if query is None:
+
         if plan is None:
             return _error(
                 "No SQL query could be generated "
@@ -626,12 +732,35 @@ def run_agent(
             )
 
         intent = plan.intent
+
+        province = None
+
+        if intent == "franchisees_in_province":
+
+            province = extract_province(
+                question
+            )
+
+            if province is None:
+                return _error(
+                    "A province could not be identified "
+                    "in the question.",
+                    intent=intent,
+                )
+
+            parameters["province"] = province
+
         query = generate_sql(
             intent=intent,
             organisation_id=organisation_id,
+            province=province,
         )
+
         sql_source = "canned"
-        fallback_used = settings.query_planner_mode == "llm"
+
+        fallback_used = (
+            settings.query_planner_mode == "llm"
+        )
 
         if query is None:
             return _error(
@@ -640,18 +769,25 @@ def run_agent(
                 intent=intent,
             )
 
-        if organisation_id is not None:
-            parameters["organisation_id"] = organisation_id
+        if (
+            organisation_id is not None
+            and ":organisation_id" in query
+        ):
+            parameters[
+                "organisation_id"
+            ] = organisation_id
 
     validate_sql(query)
 
     try:
+
         results = execute_sql(
             query,
             parameters,
         )
 
     except Exception as exc:
+
         return _error(
             str(exc),
             intent=intent,
@@ -662,9 +798,13 @@ def run_agent(
         query=query,
         results=results,
     )
+
     payload["sql_source"] = sql_source
-    payload["planner_latency_ms"] = planner_latency_ms
+    payload["planner_latency_ms"] = (
+        planner_latency_ms
+    )
     payload["fallback_used"] = fallback_used
+
     return payload
 
 
@@ -673,6 +813,7 @@ __all__ = [
     "analytics_agent",
     "build_analytics_graph",
     "classify_intent",
+    "extract_province",
     "generate_sql",
     "run_agent",
 ]
