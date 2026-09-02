@@ -17,8 +17,7 @@ from typing import Any, TypedDict
 from langgraph.graph import END, StateGraph
 
 from app.agents.analytics_agent import analytics_agent
-from app.agents.response_generator import generate_response
-from app.services.query_planner import create_query_plan
+from app.services.query_planner import build_rule_query_plan
 from app.workflows.router import route_question
 
 
@@ -41,6 +40,14 @@ class AnalyticsWorkflowState(TypedDict, total=False):
     answer: str | None
 
     error: str | None
+
+    sql_source: str | None
+
+    sql_parameters: dict[str, Any]
+
+    planner_latency_ms: float | None
+
+    fallback_used: bool | None
 
 
 def router_node(
@@ -72,11 +79,51 @@ def query_planner_node(
     state: AnalyticsWorkflowState,
 ) -> dict[str, Any]:
 
+    from app.config.settings import get_settings
+
     question = state.get("question", "")
+    organisation_id = state.get("organisation_id")
+    settings = get_settings()
 
-    plan = create_query_plan(question)
+    rule_plan = build_rule_query_plan(question)
 
-    if plan is None:
+    if settings.query_planner_mode == "llm":
+        from app.services.text_to_sql import generate_select
+
+        generated = generate_select(
+            question,
+            organisation_id=organisation_id,
+        )
+        if generated is not None:
+            return {
+                "intent": rule_plan.intent if rule_plan is not None else "generated_sql",
+                "sql_query": generated.sql,
+                "sql_parameters": generated.parameters,
+                "sql_source": generated.source,
+                "planner_latency_ms": generated.latency_ms,
+                "fallback_used": False,
+                "error": None,
+            }
+
+        if rule_plan is not None:
+            return {
+                "intent": rule_plan.intent,
+                "sql_query": None,
+                "sql_source": "canned",
+                "fallback_used": True,
+                "error": None,
+            }
+
+        return {
+            "intent": None,
+            "sql_query": None,
+            "error": (
+                "No SQL query could be generated "
+                "for this question."
+            ),
+        }
+
+    if rule_plan is None:
         return {
             "intent": None,
             "error": (
@@ -86,7 +133,9 @@ def query_planner_node(
         }
 
     return {
-        "intent": plan.intent,
+        "intent": rule_plan.intent,
+        "sql_source": "canned",
+        "fallback_used": False,
         "error": None,
     }
 
@@ -114,15 +163,24 @@ def analytics_node(
             "question": question,
             "intent": intent,
             "organisation_id": organisation_id,
+            "sql_query": state.get("sql_query"),
+            "sql_parameters": state.get("sql_parameters") or {},
+            "sql_source": state.get("sql_source"),
         }
     )
 
     return {
         "intent": result.get("intent"),
         "sql_query": result.get("sql_query"),
-        "query": result.get("query"),
+        "query": result.get("query") or result.get("sql_query"),
         "results": result.get("results", []),
         "error": result.get("error"),
+        "sql_source": result.get("sql_source") or state.get("sql_source"),
+        "planner_latency_ms": result.get("planner_latency_ms")
+        or state.get("planner_latency_ms"),
+        "fallback_used": result.get("fallback_used")
+        if result.get("fallback_used") is not None
+        else state.get("fallback_used"),
     }
 
 
@@ -137,9 +195,13 @@ def response_node(
             "answer": None,
         }
 
-    answer = generate_response(
-        intent=state.get("intent"),
+    from app.services.result_interpreter import interpret_results
+
+    answer = interpret_results(
+        question=state.get("question", ""),
         results=state.get("results", []),
+        intent=state.get("intent"),
+        sql_source=state.get("sql_source") or "canned",
     )
 
     return {

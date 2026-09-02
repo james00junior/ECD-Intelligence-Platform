@@ -41,6 +41,12 @@ class AgentResponse(BaseModel):
 
     error: str | None = None
 
+    sql_source: str | None = None
+
+    planner_latency_ms: float | None = None
+
+    fallback_used: bool | None = None
+
 
 class ResearchRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=2000)

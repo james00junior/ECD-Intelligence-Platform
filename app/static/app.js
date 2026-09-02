@@ -302,6 +302,26 @@ document.querySelector("#switch-org").addEventListener("click", () => {
   showLogin();
 });
 
+async function loadPlannerStatus() {
+  const label = document.querySelector("#llm-status-value");
+  const chip = document.querySelector("#llm-status");
+  if (!label || !chip) return;
+  try {
+    const response = await fetch("/api/v1/models/status");
+    if (!response.ok) throw new Error("status");
+    const data = await response.json();
+    const on = data.query_planner_mode === "llm";
+    chip.dataset.mode = on ? "llm" : "rule";
+    label.textContent = on
+      ? `on · ${data.ollama_model || data.llm_provider}`
+      : "off";
+  } catch {
+    chip.dataset.mode = "rule";
+    label.textContent = "unknown";
+  }
+}
+
 const existing = loadSession();
+loadPlannerStatus();
 if (existing) showChat(existing);
 else showLogin();

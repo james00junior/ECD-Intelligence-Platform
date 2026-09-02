@@ -63,8 +63,11 @@ RECOMMENDED_PLANNER_MODELS: tuple[LocalModelSpec, ...] = (
 )
 
 
-DEFAULT_BENCHMARK_MODELS: tuple[str, ...] = tuple(
-    model.ollama_tag for model in RECOMMENDED_PLANNER_MODELS[:3]
+DEFAULT_BENCHMARK_MODELS: tuple[str, ...] = (
+    "qwen3.5:0.8b",
+    "qwen2.5:0.5b",
+    "llama3.2:1b",
+    "gemma3:1b",
 )
 
 
