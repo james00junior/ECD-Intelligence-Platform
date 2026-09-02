@@ -108,4 +108,7 @@ def run_agent(
             "PostgreSQL ECD intelligence database",
         ],
         error=result.get("error"),
+        sql_source=result.get("sql_source"),
+        planner_latency_ms=result.get("planner_latency_ms"),
+        fallback_used=result.get("fallback_used"),
     )

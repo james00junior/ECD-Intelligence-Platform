@@ -47,6 +47,12 @@ class AnalyticsState(TypedDict, total=False):
 
     intent: str | None
 
+    sql_source: str | None
+
+    planner_latency_ms: float | None
+
+    fallback_used: bool | None
+
 
 # -------------------------------------------------------------------
 # SQL GENERATION
@@ -340,7 +346,24 @@ def generate_sql_node(
 ) -> AnalyticsState:
     """
     Generate SQL from the classified intent.
+
+    If a validated generated SELECT is already on the state (Phase 5
+    text-to-SQL), reuse it. Otherwise fall back to canned intent SQL.
     """
+
+    existing_sql = state.get("sql_query")
+    if existing_sql:
+        organisation_id = state.get("organisation_id")
+        parameters = dict(state.get("sql_parameters") or {})
+        if organisation_id is not None and ":organisation_id" in existing_sql:
+            parameters["organisation_id"] = organisation_id
+        return {
+            **state,
+            "sql_query": existing_sql,
+            "sql_parameters": parameters,
+            "sql_source": state.get("sql_source") or "generated",
+            "error": None,
+        }
 
     intent = state.get("intent")
 
@@ -382,6 +405,7 @@ def generate_sql_node(
         **state,
         "sql_query": query,
         "sql_parameters": parameters,
+        "sql_source": state.get("sql_source") or "canned",
         "error": None,
     }
 
@@ -402,6 +426,17 @@ def execute_sql_node(
         }
 
     try:
+        from app.tools.sql_tool import validate_sql
+
+        validate_sql(query)
+        if state.get("sql_source") in {"generated", "repaired"}:
+            from app.services.sql_guard import validate_generated_sql
+
+            validate_generated_sql(
+                query,
+                organisation_id=state.get("organisation_id"),
+            )
+
         results = execute_sql(
             query,
             state.get("sql_parameters", {}),
@@ -553,32 +588,62 @@ def run_agent(
             "Question must be a string."
         )
 
+    from app.config.settings import get_settings
+    from app.tools.sql_tool import validate_sql
+
+    settings = get_settings()
+    sql_source = "canned"
+    planner_latency_ms = None
+    fallback_used = False
+    query = None
+    parameters: dict[str, Any] = {}
+    intent = None
+
     plan = build_query_plan(question)
+    if plan is not None:
+        intent = plan.intent
 
-    if plan is None:
-        return _error(
-            "No SQL query could be generated "
-            "for this question."
+    if settings.query_planner_mode == "llm":
+        from app.services.text_to_sql import generate_select
+
+        generated = generate_select(
+            question,
+            organisation_id=organisation_id,
         )
-
-    intent = plan.intent
-
-    query = generate_sql(
-        intent=intent,
-        organisation_id=organisation_id,
-    )
+        if generated is not None:
+            query = generated.sql
+            parameters = dict(generated.parameters)
+            sql_source = generated.source
+            planner_latency_ms = generated.latency_ms
+            if intent is None:
+                intent = "generated_sql"
 
     if query is None:
-        return _error(
-            "No SQL query could be generated "
-            "for this question.",
+        if plan is None:
+            return _error(
+                "No SQL query could be generated "
+                "for this question."
+            )
+
+        intent = plan.intent
+        query = generate_sql(
             intent=intent,
+            organisation_id=organisation_id,
         )
+        sql_source = "canned"
+        fallback_used = settings.query_planner_mode == "llm"
 
-    parameters: dict[str, Any] = {}
+        if query is None:
+            return _error(
+                "No SQL query could be generated "
+                "for this question.",
+                intent=intent,
+            )
 
-    if organisation_id is not None:
-        parameters["organisation_id"] = organisation_id
+        if organisation_id is not None:
+            parameters["organisation_id"] = organisation_id
+
+    validate_sql(query)
 
     try:
         results = execute_sql(
@@ -592,11 +657,15 @@ def run_agent(
             intent=intent,
         )
 
-    return _success(
+    payload = _success(
         intent=intent,
         query=query,
         results=results,
     )
+    payload["sql_source"] = sql_source
+    payload["planner_latency_ms"] = planner_latency_ms
+    payload["fallback_used"] = fallback_used
+    return payload
 
 
 __all__ = [

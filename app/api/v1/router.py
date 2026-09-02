@@ -4,6 +4,7 @@ from app.api.v1.agent import router as agent_router
 from app.api.v1.health import router as health_router
 from app.api.v1.organisations import router as organisations_router
 from app.api.v1.research import router as research_router
+from app.api.v1.models import router as models_router
 
 
 router = APIRouter(
@@ -25,4 +26,8 @@ router.include_router(
 
 router.include_router(
     research_router,
+)
+
+router.include_router(
+    models_router,
 )

@@ -148,9 +148,71 @@ SUITES: dict[str, tuple[BenchmarkCase, ...]] = {
 }
 
 
+@dataclass(frozen=True)
+class SqlBenchmarkCase:
+    """Held-out text-to-SQL checks. expected_sql is optional guidance."""
+
+    question: str
+    organisation_id: int | None
+    must_be_select: bool = True
+    must_include_org_filter: bool = False
+    expected_tables: tuple[str, ...] = ()
+    notes: str = ""
+
+
+TEXT_TO_SQL_SUITE: tuple[SqlBenchmarkCase, ...] = (
+    SqlBenchmarkCase(
+        "How many franchisees are there?",
+        1,
+        must_include_org_filter=True,
+        expected_tables=("franchisees",),
+    ),
+    SqlBenchmarkCase(
+        "How many active franchisees are there?",
+        1,
+        must_include_org_filter=True,
+        expected_tables=("franchisees",),
+    ),
+    SqlBenchmarkCase(
+        "How many children are enrolled?",
+        1,
+        must_include_org_filter=True,
+        expected_tables=("children",),
+    ),
+    SqlBenchmarkCase(
+        "How many franchisees are there by province?",
+        1,
+        must_include_org_filter=True,
+        expected_tables=("franchisees", "provinces"),
+    ),
+    SqlBenchmarkCase(
+        "How many franchisees does each coach manage?",
+        1,
+        must_include_org_filter=True,
+        expected_tables=("franchisees", "coaches"),
+        notes="Beyond the eight canned intents",
+    ),
+    SqlBenchmarkCase(
+        "What is the population by province?",
+        None,
+        must_include_org_filter=False,
+        expected_tables=("population_snapshots", "provinces"),
+    ),
+    SqlBenchmarkCase(
+        "Which province has the most franchisees?",
+        1,
+        must_include_org_filter=True,
+        expected_tables=("franchisees", "provinces"),
+        notes="Ranking query; canned planner has no intent",
+    ),
+)
+
+
 __all__ = [
     "BenchmarkCase",
     "EXTENDED_SUITE",
     "STANDARD_SUITE",
     "SUITES",
+    "SqlBenchmarkCase",
+    "TEXT_TO_SQL_SUITE",
 ]

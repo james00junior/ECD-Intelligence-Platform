@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 
 from app.config.settings import get_settings
 from app.models.query_plan import AnalyticsPlan
+from app.services.llm_provider import build_chat_model
 from app.services.query_planner import VALID_INTENTS, plan_from_intent
 
 
@@ -82,26 +83,11 @@ Use unsupported for questions outside this analytics domain.""",
 
 
 def _build_ollama_chat(settings) -> BaseChatModel:
-    from langchain_ollama import ChatOllama
-
-    return ChatOllama(
-        model=settings.ollama_model,
-        base_url=settings.ollama_base_url,
-        temperature=0,
-    )
+    return build_chat_model(provider="ollama", model=settings.ollama_model)
 
 
 def _build_openai_chat(settings) -> BaseChatModel | None:
-    if not settings.openai_api_key:
-        return None
-
-    from langchain_openai import ChatOpenAI
-
-    return ChatOpenAI(
-        model=settings.openai_model,
-        api_key=settings.openai_api_key,
-        temperature=0,
-    )
+    return build_chat_model(provider="openai", model=settings.openai_model)
 
 
 def _build_chat_model(

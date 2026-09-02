@@ -18,13 +18,15 @@ class Settings(BaseSettings):
 
         Small-model examples (set OLLAMA_MODEL to any of these):
             qwen3.5:0.8b
-            gemma4:e2b
-            phi4-mini
+            qwen2.5:0.5b
+            llama3.2:1b
+            gemma3:1b
 
-        Compare models locally:
-            uv run python scripts/compare_planner_models.py --pull --details
+        Compare models locally and write the Phase 5 report:
+            uv run python scripts/compare_planner_models.py --pull --details --write docs/phase5-model-benchmark.md
         OPENAI_API_KEY: required only when LLM_PROVIDER=openai
         OPENAI_MODEL: OpenAI chat model name (default: gpt-4o-mini)
+        LLM_SQL_MAX_REPAIRS: bounded text-to-SQL repair attempts (default: 2)
     """
 
     query_planner_mode: Literal["rule", "llm"] = "rule"
@@ -33,6 +35,7 @@ class Settings(BaseSettings):
     ollama_model: str = "qwen3.5:0.8b"
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
+    llm_sql_max_repairs: int = 2
 
     model_config = SettingsConfigDict(
         env_file=".env",

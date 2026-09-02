@@ -244,6 +244,14 @@ a:focus-visible {
   color: #85a99a;
 }
 
+.llm-chip[data-mode="llm"] {
+  background: #164e3a;
+}
+
+.llm-chip[data-mode="rule"] strong {
+  color: var(--text-muted);
+}
+
 .text-button {
   border: 1px solid var(--border);
   background: transparent;
