@@ -1,11 +1,11 @@
 """
 Grounded, source-aware synthesis for Research Agent evidence.
 
-Known SQL facts are rendered deterministically so database values
-cannot be altered by an LLM.
+SQL facts are rendered deterministically so database values cannot
+be changed by an LLM.
 
-Internal document evidence is preserved and presented alongside
-the operational analytics rather than being discarded.
+Document and external evidence are summarized by the configured LLM
+into a concise, source-grounded answer.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ import json
 from typing import Any
 
 from app.agents.response_generator import generate_response
+from app.services.llm_provider import complete_text
 from app.services.query_planner import VALID_INTENTS
 
 
@@ -22,29 +23,46 @@ def build_synthesis_prompt(
     evidence: list[dict[str, Any]],
 ) -> str:
     """
-    Build a source-only prompt for a future LLM synthesis layer.
+    Build a grounded synthesis prompt from selected evidence only.
     """
 
-    sources = []
+    sources: list[str] = []
 
-    for index, item in enumerate(
-        evidence,
-        start=1,
-    ):
-        provenance = item["provenance"]
+    for index, item in enumerate(evidence, start=1):
+        provenance = item.get("provenance", {})
+
+        source_type = provenance.get(
+            "source_type",
+            "unknown",
+        )
+        title = provenance.get(
+            "title",
+            "Untitled source",
+        )
+        content = str(
+            item.get("content", "")
+        ).strip()
+
+        if not content:
+            continue
 
         sources.append(
-            f"[{index}] "
-            f"{provenance['source_type']} | "
-            f"{provenance['title']}\n"
-            f"{item['content']}"
+            f"[{index}] {source_type} | {title}\n"
+            f"{content}"
         )
 
     return (
-        "Answer only from the supplied evidence. "
-        "Do not invent facts or numbers. "
-        "Cite factual claims using bracketed source numbers.\n\n"
-        f"Question: {question}\n\n"
+        "You are the grounded synthesis layer of an enterprise "
+        "ECD intelligence platform.\n\n"
+        "Answer the user's question using ONLY the supplied evidence.\n"
+        "Do not invent facts, numbers, dates, organisations, or claims.\n"
+        "Do not change or estimate numerical values from SQL evidence.\n"
+        "Do not mention evidence that does not support the answer.\n"
+        "Do not reproduce raw JSON, database rows, or document chunks.\n"
+        "Synthesize the evidence into concise, natural language.\n"
+        "Cite factual claims using the supplied bracketed source numbers.\n"
+        "If the evidence does not support part of the question, say so.\n\n"
+        f"Question:\n{question.strip()}\n\n"
         "Evidence:\n"
         + "\n\n".join(sources)
     )
@@ -54,19 +72,11 @@ def _parse_sql_evidence(
     item: dict[str, Any],
 ) -> tuple[str | None, list[dict[str, Any]]]:
     """
-    Convert SQL evidence back into structured rows.
+    Convert SQL evidence content back into structured rows.
     """
 
-    provenance = item.get(
-        "provenance",
-        {},
-    )
-
-    metadata = provenance.get(
-        "metadata",
-        {},
-    )
-
+    provenance = item.get("provenance", {})
+    metadata = provenance.get("metadata", {})
     intent = metadata.get("intent")
 
     if intent not in VALID_INTENTS:
@@ -74,12 +84,8 @@ def _parse_sql_evidence(
 
     try:
         rows = json.loads(
-            item.get(
-                "content",
-                "[]",
-            )
+            item.get("content", "[]")
         )
-
     except (
         TypeError,
         json.JSONDecodeError,
@@ -103,30 +109,19 @@ def _render_sql_evidence(
     evidence: list[dict[str, Any]],
 ) -> tuple[list[str], list[int]]:
     """
-    Render known SQL evidence as human-readable facts.
+    Render known SQL evidence using deterministic response templates.
     """
 
     facts: list[str] = []
     references: list[int] = []
 
-    for index, item in enumerate(
-        evidence,
-        start=1,
-    ):
+    for index, item in enumerate(evidence, start=1):
+        provenance = item.get("provenance", {})
 
-        provenance = item.get(
-            "provenance",
-            {},
-        )
-
-        if provenance.get(
-            "source_type"
-        ) != "sql":
+        if provenance.get("source_type") != "sql":
             continue
 
-        intent, rows = _parse_sql_evidence(
-            item
-        )
+        intent, rows = _parse_sql_evidence(item)
 
         if not intent or not rows:
             continue
@@ -138,8 +133,7 @@ def _render_sql_evidence(
 
         if (
             rendered
-            and rendered
-            != "The query was completed successfully."
+            and rendered != "The query was completed successfully."
         ):
             facts.append(rendered)
             references.append(index)
@@ -147,95 +141,111 @@ def _render_sql_evidence(
     return facts, references
 
 
-def _render_internal_evidence(
+def _document_evidence(
     evidence: list[dict[str, Any]],
-) -> tuple[list[str], list[int]]:
+) -> list[dict[str, Any]]:
     """
-    Preserve internal-document findings.
+    Return document/external evidence for LLM synthesis.
 
-    Each finding remains linked to its source so the final
-    answer can provide transparent provenance.
+    SQL evidence is deliberately excluded because SQL facts are
+    rendered deterministically.
     """
 
-    findings: list[str] = []
-    references: list[int] = []
+    return [
+        item
+        for item in evidence
+        if item.get("provenance", {}).get("source_type")
+        in {
+            "internal_document",
+            "external",
+        }
+    ]
 
-    for index, item in enumerate(
-        evidence,
-        start=1,
-    ):
 
-        provenance = item.get(
-            "provenance",
-            {},
-        )
+def _synthesize_document_evidence(
+    question: str,
+    evidence: list[dict[str, Any]],
+) -> str | None:
+    """
+    Ask the configured LLM to synthesize document/external evidence.
 
-        if (
-            provenance.get(
-                "source_type"
-            )
-            != "internal_document"
-        ):
-            continue
+    This layer is strictly grounded in the supplied evidence.
+    """
 
-        content = str(
-            item.get(
-                "content",
+    document_evidence = _document_evidence(evidence)
+
+    if not document_evidence:
+        return None
+
+    prompt = build_synthesis_prompt(
+        question,
+        document_evidence,
+    )
+
+    try:
+        result = complete_text(prompt)
+    except Exception:
+        return None
+
+    if result is None:
+        return None
+
+    answer = result.text.strip()
+
+    if not answer:
+        return None
+
+    return answer
+
+
+def _deterministic_document_fallback(
+    evidence: list[dict[str, Any]],
+) -> str | None:
+    """
+    Safe fallback when the LLM is unavailable.
+
+    We deliberately do not dump complete document chunks into the
+    answer. Instead, provide a concise source-level availability
+    statement.
+    """
+
+    document_evidence = _document_evidence(evidence)
+
+    if not document_evidence:
+        return None
+
+    titles: list[str] = []
+
+    for item in document_evidence:
+        title = str(
+            item.get("provenance", {}).get(
+                "title",
                 "",
             )
         ).strip()
 
-        if not content:
-            continue
+        if title and title not in titles:
+            titles.append(title)
 
-        findings.append(content)
-        references.append(index)
-
-    return findings, references
-
-
-def _render_external_evidence(
-    evidence: list[dict[str, Any]],
-) -> tuple[list[str], list[int]]:
-    """
-    Preserve external research evidence.
-    """
-
-    findings: list[str] = []
-    references: list[int] = []
-
-    for index, item in enumerate(
-        evidence,
-        start=1,
-    ):
-
-        provenance = item.get(
-            "provenance",
-            {},
+    if not titles:
+        return (
+            "Relevant organisational or external evidence was found, "
+            "but it could not be summarized automatically."
         )
 
-        if (
-            provenance.get(
-                "source_type"
-            )
-            != "external"
-        ):
-            continue
+    if len(titles) == 1:
+        return (
+            f"Relevant evidence was found in "
+            f"“{titles[0]}”, but it could not be summarized "
+            "automatically."
+        )
 
-        content = str(
-            item.get(
-                "content",
-                "",
-            )
-        ).strip()
-
-        if not content:
-            continue
-
-        findings.append(content)
-        references.append(index)
-
-    return findings, references
+    return (
+        "Relevant evidence was found in the following sources, "
+        "but it could not be summarized automatically: "
+        + ", ".join(f"“{title}”" for title in titles)
+        + "."
+    )
 
 
 def _build_citations(
@@ -245,14 +255,10 @@ def _build_citations(
     Build platform citations while preserving source identity.
     """
 
-    citations = []
+    citations: list[dict[str, Any]] = []
 
-    for index, item in enumerate(
-        evidence,
-        start=1,
-    ):
-
-        provenance = item["provenance"]
+    for index, item in enumerate(evidence, start=1):
+        provenance = item.get("provenance", {})
 
         organisation_id = provenance.get(
             "organisation_id"
@@ -267,19 +273,19 @@ def _build_citations(
         citations.append(
             {
                 "reference": index,
-                "source_type": provenance[
+                "source_type": provenance.get(
                     "source_type"
-                ],
+                ),
                 "source_kind": source_kind,
-                "title": provenance[
+                "title": provenance.get(
                     "title"
-                ],
+                ),
                 "uri": provenance.get(
                     "uri"
                 ),
-                "source_id": provenance[
+                "source_id": provenance.get(
                     "source_id"
-                ],
+                ),
             }
         )
 
@@ -291,12 +297,12 @@ def synthesize_grounded_answer(
     evidence: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """
-    Create a coherent answer from multiple evidence sources.
+    Create a coherent, grounded answer from selected evidence.
 
-    SQL analytics are rendered deterministically.
+    SQL facts are always rendered deterministically.
 
-    Internal and external research are preserved instead of
-    being discarded when SQL evidence is present.
+    Internal and external evidence are summarized by the configured
+    LLM, with a safe fallback when the LLM is unavailable.
     """
 
     if not evidence:
@@ -309,79 +315,44 @@ def synthesize_grounded_answer(
             ),
         }
 
-    sql_facts, sql_refs = (
-        _render_sql_evidence(
-            evidence
-        )
+    sql_facts, sql_refs = _render_sql_evidence(
+        evidence
     )
 
-    internal_findings, internal_refs = (
-        _render_internal_evidence(
-            evidence
-        )
+    document_answer = _synthesize_document_evidence(
+        question,
+        evidence,
     )
 
-    external_findings, external_refs = (
-        _render_external_evidence(
+    if document_answer is None:
+        document_answer = _deterministic_document_fallback(
             evidence
         )
-    )
 
     answer_sections: list[str] = []
 
     # ---------------------------------------------------------------
-    # OPERATIONAL DATA
+    # SQL / OPERATIONAL FACTS
     # ---------------------------------------------------------------
 
-    if sql_facts:
-
+    for fact, reference in zip(
+        sql_facts,
+        sql_refs,
+    ):
         answer_sections.append(
-            "### Operational data\n"
-            + "\n".join(
-                f"- {fact} [{reference}]"
-                for fact, reference in zip(
-                    sql_facts,
-                    sql_refs,
-                )
-            )
+            f"{fact} [{reference}]"
         )
 
     # ---------------------------------------------------------------
-    # INTERNAL PROGRAMME INTELLIGENCE
+    # DOCUMENT / EXTERNAL SYNTHESIS
     # ---------------------------------------------------------------
 
-    if internal_findings:
-
+    if document_answer:
         answer_sections.append(
-            "### Programme intelligence\n"
-            + "\n".join(
-                f"- {finding} [{reference}]"
-                for finding, reference in zip(
-                    internal_findings,
-                    internal_refs,
-                )
-            )
-        )
-
-    # ---------------------------------------------------------------
-    # EXTERNAL RESEARCH
-    # ---------------------------------------------------------------
-
-    if external_findings:
-
-        answer_sections.append(
-            "### External research\n"
-            + "\n".join(
-                f"- {finding} [{reference}]"
-                for finding, reference in zip(
-                    external_findings,
-                    external_refs,
-                )
-            )
+            document_answer
         )
 
     if not answer_sections:
-
         return {
             "answer": None,
             "citations": _build_citations(
