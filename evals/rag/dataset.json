@@ -4,8 +4,11 @@
     "question": "What is the SmartStart model?",
     "organisation_id": 1,
     "expected_source_uris": [
+      "https://smartstart.org.za/about-us/",
       "https://smartstart.org.za/model/",
-      "https://smartstart.org.za/our-model/"
+      "https://smartstart.org.za/our-model/",
+      "https://smartstart.org.za/news/",
+      "https://smartstart.org.za/news-media/"
     ],
     "category": "model",
     "difficulty": "easy"
@@ -15,8 +18,12 @@
     "question": "What is SmartStart's impact?",
     "organisation_id": 1,
     "expected_source_uris": [
+      "https://smartstart.org.za/",
+      "https://smartstart.org.za/about-us/",
       "https://smartstart.org.za/impact/",
-      "https://smartstart.org.za/our-impact/"
+      "https://smartstart.org.za/our-impact/",
+      "https://smartstart.org.za/news/",
+      "https://smartstart.org.za/news-media/"
     ],
     "category": "impact",
     "difficulty": "easy"
@@ -26,8 +33,11 @@
     "question": "What is the SmartStart programme?",
     "organisation_id": 1,
     "expected_source_uris": [
-      "https://smartstart.org.za/programme/",
-      "https://smartstart.org.za/our-programme/"
+      "https://smartstart.org.za/",
+      "https://smartstart.org.za/about-us/",
+      "https://smartstart.org.za/funders/",
+      "https://smartstart.org.za/our-programme/",
+      "https://smartstart.org.za/programme/"
     ],
     "category": "programme",
     "difficulty": "easy"
@@ -47,10 +57,197 @@
     "question": "How can I contact SmartStart?",
     "organisation_id": 1,
     "expected_source_uris": [
-      "https://smartstart.org.za/contact/",
-      "https://smartstart.org.za/contact-us/"
+      "https://smartstart.org.za/contact-us/",
+      "https://smartstart.org.za/contact/"
     ],
     "category": "contact",
     "difficulty": "easy"
+  },
+  {
+    "id": "rag-006",
+    "question": "How does SmartStart support women to create livelihoods?",
+    "organisation_id": 1,
+    "expected_source_uris": [
+      "https://smartstart.org.za/",
+      "https://smartstart.org.za/about-us/",
+      "https://smartstart.org.za/news/",
+      "https://smartstart.org.za/news-media/"
+    ],
+    "category": "livelihoods",
+    "difficulty": "medium"
+  },
+  {
+    "id": "rag-007",
+    "question": "What evidence is there that SmartStart improves outcomes for children?",
+    "organisation_id": 1,
+    "expected_source_uris": [
+      "https://smartstart.org.za/",
+      "https://smartstart.org.za/news/",
+      "https://smartstart.org.za/news-media/"
+    ],
+    "category": "evidence",
+    "difficulty": "medium"
+  },
+  {
+    "id": "rag-008",
+    "question": "How does the SmartStart programme maintain quality at scale?",
+    "organisation_id": 1,
+    "expected_source_uris": [
+      "https://smartstart.org.za/about-us/",
+      "https://smartstart.org.za/model/",
+      "https://smartstart.org.za/our-model/",
+      "https://smartstart.org.za/news/",
+      "https://smartstart.org.za/news-media/"
+    ],
+    "category": "quality",
+    "difficulty": "medium"
+  },
+  {
+    "id": "rag-009",
+    "question": "What age group is the SmartStart programme designed for?",
+    "organisation_id": 1,
+    "expected_source_uris": [
+      "https://smartstart.org.za/funders/",
+      "https://smartstart.org.za/programme/",
+      "https://smartstart.org.za/our-programme/",
+      "https://smartstart.org.za/about-us/"
+    ],
+    "category": "programme",
+    "difficulty": "medium"
+  },
+  {
+    "id": "rag-010",
+    "question": "How does SmartStart reach children in underserved communities?",
+    "organisation_id": 1,
+    "expected_source_uris": [
+      "https://smartstart.org.za/",
+      "https://smartstart.org.za/about-us/",
+      "https://smartstart.org.za/model/",
+      "https://smartstart.org.za/our-model/"
+    ],
+    "category": "delivery",
+    "difficulty": "medium"
+  },
+  {
+    "id": "rag-011",
+    "question": "What role do implementation partners play in the SmartStart network?",
+    "organisation_id": 1,
+    "expected_source_uris": [
+      "https://smartstart.org.za/",
+      "https://smartstart.org.za/about-us/",
+      "https://smartstart.org.za/partners/"
+    ],
+    "category": "partners",
+    "difficulty": "medium"
+  },
+  {
+    "id": "rag-012",
+    "question": "How does SmartStart contribute to economic participation for parents?",
+    "organisation_id": 1,
+    "expected_source_uris": [
+      "https://smartstart.org.za/"
+    ],
+    "category": "economic-impact",
+    "difficulty": "hard"
+  },
+  {
+    "id": "rag-013",
+    "question": "What makes the SmartStart model affordable and scalable?",
+    "organisation_id": 1,
+    "expected_source_uris": [
+      "https://smartstart.org.za/",
+      "https://smartstart.org.za/about-us/",
+      "https://smartstart.org.za/news/",
+      "https://smartstart.org.za/news-media/",
+      "https://smartstart.org.za/model/",
+      "https://smartstart.org.za/our-model/"
+    ],
+    "category": "model",
+    "difficulty": "hard"
+  },
+  {
+    "id": "rag-014",
+    "question": "How does SmartStart use coaching to support franchisees?",
+    "organisation_id": 1,
+    "expected_source_uris": [
+      "https://smartstart.org.za/about-us/",
+      "https://smartstart.org.za/"
+    ],
+    "category": "coaching",
+    "difficulty": "hard"
+  },
+  {
+    "id": "rag-015",
+    "question": "What evidence-based approaches underpin SmartStart's early learning work?",
+    "organisation_id": 1,
+    "expected_source_uris": [
+      "https://smartstart.org.za/",
+      "https://smartstart.org.za/about-us/",
+      "https://smartstart.org.za/funders/"
+    ],
+    "category": "evidence",
+    "difficulty": "hard"
+  },
+  {
+    "id": "rag-016",
+    "question": "How is SmartStart working toward system-level change in early childhood development?",
+    "organisation_id": 1,
+    "expected_source_uris": [
+      "https://smartstart.org.za/",
+      "https://smartstart.org.za/about-us/",
+      "https://smartstart.org.za/partners/"
+    ],
+    "category": "systems-change",
+    "difficulty": "hard"
+  },
+  {
+    "id": "rag-017",
+    "question": "What are the main benefits of the SmartStart social franchise model?",
+    "organisation_id": 1,
+    "expected_source_uris": [
+      "https://smartstart.org.za/",
+      "https://smartstart.org.za/about-us/",
+      "https://smartstart.org.za/model/",
+      "https://smartstart.org.za/our-model/"
+    ],
+    "category": "model",
+    "difficulty": "hard"
+  },
+  {
+    "id": "rag-018",
+    "question": "What happened in SmartStart's 2025 systems mapping work?",
+    "organisation_id": 1,
+    "expected_source_uris": [
+      "https://smartstart.org.za/news/",
+      "https://smartstart.org.za/news-media/"
+    ],
+    "category": "research",
+    "difficulty": "hard"
+  },
+  {
+    "id": "rag-019",
+    "question": "How did SmartStart's child outcomes change during the evaluation?",
+    "organisation_id": 1,
+    "expected_source_uris": [
+      "https://smartstart.org.za/",
+      "https://smartstart.org.za/news/",
+      "https://smartstart.org.za/news-media/"
+    ],
+    "category": "impact",
+    "difficulty": "hard"
+  },
+  {
+    "id": "rag-020",
+    "question": "What factors connect SmartStart's early learning programme to better long-term outcomes for children?",
+    "organisation_id": 1,
+    "expected_source_uris": [
+      "https://smartstart.org.za/",
+      "https://smartstart.org.za/about-us/",
+      "https://smartstart.org.za/news/",
+      "https://smartstart.org.za/news-media/",
+      "https://smartstart.org.za/funders/"
+    ],
+    "category": "synthesis",
+    "difficulty": "hard"
   }
 ]
